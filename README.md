@@ -1,0 +1,49 @@
+# Desks
+
+A floating task panel for macOS where every task gets its own real desktop.
+
+Keep a short list of what you are working on in the top-right corner of the screen. Each task owns a Mission Control desktop, so switching tasks switches desktops, and each task shows the windows that live on it.
+
+## Features
+
+- **A desktop per task.** Creating a task adds a new desktop and takes you there. Desktop 1 stays home for unsorted windows.
+- **Descriptions.** Jot down what the task is about or what is next.
+- **Live window lists.** See which windows sit on each task's desktop and click one to jump to it.
+- **Switch fast.** Click a task, or use the macOS `⌃1`–`⌃9` desktop shortcuts shown on each task.
+- **Move windows.** Drag a window's row onto a task, right-click it and choose **Send to**, or send the front window to a task with one click.
+- **Multiple displays.** Desktops on every screen are listed and switched correctly.
+- **Stays out of the way.** Tasks collapse to a single line with app icons, the panel sizes itself to its content, and it snaps back to the corner after you move it.
+
+## Requirements
+
+- macOS 14 or later (developed on macOS 26)
+- Xcode or the Swift command line tools (Swift 5.9+)
+- Accessibility permission for Desks
+
+## Build and run
+
+```bash
+./build.sh
+```
+
+The script builds a release binary, bundles `Desks.app`, signs it (with your Apple Development certificate if one is installed, otherwise ad hoc), installs it to `~/Applications`, and launches it.
+
+On first launch, allow Desks under **System Settings → Privacy & Security → Accessibility**.
+
+For instant switching, turn on **Switch to Desktop 1–9** under **System Settings → Keyboard → Keyboard Shortcuts → Mission Control**. Without them, Desks switches through Mission Control instead.
+
+## How it works
+
+macOS has no public API for desktops, so Desks combines a few techniques that do not require disabling System Integrity Protection:
+
+- It reads desktops and their windows through private SkyLight functions.
+- It adds, removes, and switches desktops by driving Mission Control through the Accessibility API.
+- It moves a window to another desktop by simulating a title-bar drag while pressing the desktop shortcut, or by placing it directly when the target is on another screen.
+
+Because these rely on private behavior, a macOS update can break them.
+
+Tasks are stored locally in `~/Library/Application Support/Desks/items.json`. Windows are read live and never stored. Desks makes no network connections.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Space Grotesk is bundled under the SIL Open Font License 1.1, see [Resources/Fonts/OFL.txt](Resources/Fonts/OFL.txt).
