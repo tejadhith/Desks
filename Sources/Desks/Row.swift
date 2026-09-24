@@ -5,6 +5,8 @@ struct Row: View {
     let window: Sky.Window
     @State private var hover = false
 
+    private var active: Bool { store.front == window.id }
+
     var body: some View {
         Button {
             store.focus(window)
@@ -18,10 +20,13 @@ struct Row: View {
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
-            .font(.grotesk(11))
+            .font(.grotesk(11, active ? .medium : .regular))
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(hover ? Color.ink.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 4))
+            .background(
+                Color.ink.opacity(active ? 0.2 : hover ? 0.12 : 0),
+                in: RoundedRectangle(cornerRadius: 4)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

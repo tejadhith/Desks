@@ -4,6 +4,9 @@ import ApplicationServices
 @_silgen_name("_AXUIElementGetWindow")
 private func windowID(_ element: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
 
+@_silgen_name("GetProcessForPID")
+private func process(_ pid: pid_t, _ psn: UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus
+
 enum Access {
     static var trusted: Bool { AXIsProcessTrusted() }
 
@@ -78,6 +81,7 @@ enum Access {
     static func front() -> (pid: pid_t, id: UInt32)? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let element = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(element, 0.25)
         guard let window: AXUIElement = value(element, kAXFocusedWindowAttribute) else { return nil }
         var id: CGWindowID = 0
         guard windowID(window, &id) == .success else { return nil }
@@ -85,10 +89,14 @@ enum Access {
     }
 
     static func raise(_ window: Sky.Window) {
-        let app = AXUIElementCreateApplication(window.pid)
-        AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        var psn = ProcessSerialNumber()
+        if process(window.pid, &psn) == noErr {
+            Sky.focus(window.id, of: &psn)
+        } else {
+            AXUIElementSetAttributeValue(AXUIElementCreateApplication(window.pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        }
         guard let element = windows(of: window.pid).first(where: { $0.id == window.id })?.element else { return }
-        AXUIElementSetAttributeValue(element, kAXMainAttribute as CFString, kCFBooleanTrue)
         _ = press(element, kAXRaiseAction)
+        AXUIElementSetAttributeValue(element, kAXMainAttribute as CFString, kCFBooleanTrue)
     }
 }

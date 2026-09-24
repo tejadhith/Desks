@@ -14,9 +14,11 @@ final class Store: ObservableObject {
     @Published var anchored = true
     @Published var height: CGFloat = 0
     @Published var overflow = false
+    @Published var limit: CGFloat = 600
     @Published private(set) var carrying: Sky.Window?
     @Published private(set) var pointer: CGPoint = .zero
     @Published private(set) var hovered: UInt64?
+    @Published private(set) var front: UInt32?
     private var zones: [UInt64: CGRect] = [:]
     var snap: () -> Void = {}
 
@@ -24,6 +26,7 @@ final class Store: ObservableObject {
     private var titles: [UInt32: String] = [:]
     private var fronts: [UInt64: Sky.Window] = [:]
     private var loop: Task<Void, Never>?
+    private var pulse: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
 
     init() {
@@ -61,6 +64,19 @@ final class Store: ObservableObject {
 
     func windows(on space: Sky.Space) -> [Sky.Window] {
         windows.filter { $0.space == space.id }
+    }
+
+    var screens: [(id: String, name: String)] {
+        var seen = Set<String>()
+        return spaces.compactMap { space in
+            guard seen.insert(space.display).inserted else { return nil }
+            return (space.display, Sky.name(of: space.display) ?? "Screen")
+        }
+    }
+
+    func screen(of space: Sky.Space?) -> String? {
+        guard let space, screens.count > 1 else { return nil }
+        return Sky.name(of: space.display)
     }
 
     func shortcut(for space: Sky.Space?) -> String? {
@@ -158,6 +174,9 @@ final class Store: ObservableObject {
         let back = current
         let origin = spaces.first { $0.id == window.space }
         run {
+            if origin?.display == space.display, Bridge.move([window.id], to: space.id), await Carry.arrived(window.id, in: space.id) {
+                return
+            }
             if !Sky.visible().contains(window.space), let origin {
                 await self.go(to: origin)
                 try? await Task.sleep(for: .milliseconds(350))
@@ -180,7 +199,7 @@ final class Store: ObservableObject {
                 await self.go(to: previous)
             }
             if !moved {
-                self.tell("Couldn't grab \(window.app)'s title bar. Drag it in Mission Control instead.")
+                self.tell("Couldn't move \(window.app). Drag it in Mission Control instead.")
             }
         }
     }
@@ -268,15 +287,7 @@ final class Store: ObservableObject {
 
     private func go(to space: Sky.Space) async {
         if Sky.visible().contains(space.id) {
-            guard Sky.current() != space.id else { return }
-            if let window = fronts[space.id] {
-                Access.raise(window)
-            } else if let frame = Sky.frame(of: space.display) {
-                Carry.tap(CGPoint(x: frame.midX, y: frame.midY))
-            }
-            for _ in 0..<10 where Sky.current() != space.id {
-                try? await Task.sleep(for: .milliseconds(100))
-            }
+            await land(space)
             return
         }
         if let number = space.number {
@@ -284,11 +295,26 @@ final class Store: ObservableObject {
                 guard Keys.desktop(number) else { break }
                 for _ in 0..<10 {
                     try? await Task.sleep(for: .milliseconds(100))
-                    if Sky.visible().contains(space.id) { return }
+                    if Sky.visible().contains(space.id) {
+                        await land(space)
+                        return
+                    }
                 }
             }
         }
         _ = await Mission.go(to: space.index, on: space.display)
+    }
+
+    private func land(_ space: Sky.Space) async {
+        guard Sky.current() != space.id else { return }
+        if let window = fronts[space.id] {
+            Access.raise(window)
+        } else if let frame = Sky.frame(of: space.display) {
+            Carry.tap(CGPoint(x: frame.midX, y: frame.midY))
+        }
+        for _ in 0..<10 where Sky.current() != space.id {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
     }
 
     private func link(_ id: UUID, to space: Sky.Space) {
@@ -317,8 +343,17 @@ final class Store: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in await self?.refresh() }
+                Task { @MainActor in
+                    self?.glance()
+                    await self?.refresh()
+                }
             })
+        }
+        pulse = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.glance()
+                try? await Task.sleep(for: .milliseconds(400))
+            }
         }
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -326,6 +361,11 @@ final class Store: ObservableObject {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+    }
+
+    private func glance() {
+        let now = trusted ? Access.front()?.id : nil
+        if now != front { front = now }
     }
 
     private func save() {

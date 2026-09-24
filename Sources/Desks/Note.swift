@@ -12,12 +12,13 @@ struct Note: View {
                 if store.overflow {
                     ScrollView { list }
                         .scrollIndicators(.never)
+                        .frame(height: store.limit)
                 } else {
                     list
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .fixedSize(horizontal: false, vertical: true)
         .coordinateSpace(name: Style.space)
         .overlay(alignment: .topLeading) {
             if let window = store.carrying {
@@ -39,6 +40,7 @@ struct Note: View {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.mist))
         .foregroundStyle(Color.ink)
         .tint(Color.ink)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var list: some View {

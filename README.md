@@ -37,8 +37,8 @@ For instant switching, turn on **Switch to Desktop 1–9** under **System Settin
 macOS has no public API for desktops, so Desks combines a few techniques that do not require disabling System Integrity Protection:
 
 - It reads desktops and their windows through private SkyLight functions.
-- It adds, removes, and switches desktops by driving Mission Control through the Accessibility API.
-- It moves a window to another desktop by simulating a title-bar drag while pressing the desktop shortcut, or by placing it directly when the target is on another screen.
+- It moves a window to another desktop with SkyLight's bridged window-management operation, which works on any app's window without switching desktops. If that is unavailable it falls back to reassigning a single-window app, then to dragging the window's thumbnail in Mission Control.
+- It adds, removes, and switches desktops through Mission Control and the desktop shortcuts, so the Dock always knows about every desktop.
 
 Because these rely on private behavior, a macOS update can break them.
 

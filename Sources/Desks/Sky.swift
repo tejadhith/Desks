@@ -27,6 +27,9 @@ enum Sky {
     private typealias Tags = @convention(c) (UnsafeRawPointer) -> UInt64
     private typealias Parent = @convention(c) (UnsafeRawPointer) -> UInt32
     private typealias Level = @convention(c) (UnsafeRawPointer) -> Int32
+    private typealias Assign = @convention(c) (Int32, pid_t, UInt64) -> Int32
+    private typealias Front = @convention(c) (UnsafeMutableRawPointer, UInt32, UInt32) -> Int32
+    private typealias Record = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<UInt8>) -> Int32
 
     private static let library = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
 
@@ -46,6 +49,9 @@ enum Sky {
     private static let parent = load("SLSWindowIteratorGetParentID", as: Parent.self)
     private static let identifier = load("SLSWindowIteratorGetWindowID", as: Parent.self)
     private static let level = load("SLSWindowIteratorGetLevel", as: Level.self)
+    private static let process = load("SLSProcessAssignToSpace", as: Assign.self)
+    private static let front = load("_SLPSSetFrontProcessWithOptions", as: Front.self)
+    private static let record = load("SLPSPostEventRecordTo", as: Record.self)
 
     private static let connection = main()
 
@@ -77,6 +83,29 @@ enum Sky {
         active(connection)
     }
 
+    static func focus(_ window: UInt32, of psn: inout ProcessSerialNumber) {
+        withUnsafeMutablePointer(to: &psn) { pointer in
+            let raw = UnsafeMutableRawPointer(pointer)
+            _ = front(raw, window, 0x200)
+            var bytes = [UInt8](repeating: 0, count: 0x100)
+            bytes[0x04] = 0xF8
+            bytes[0x3A] = 0x10
+            var id = window
+            memcpy(&bytes[0x3C], &id, MemoryLayout<UInt32>.size)
+            var point = CGPoint(x: -1, y: -1)
+            memcpy(&bytes[0x20], &point, MemoryLayout<CGPoint>.size)
+            bytes[0x08] = 0x01
+            _ = record(raw, &bytes)
+            bytes[0x08] = 0x02
+            _ = record(raw, &bytes)
+        }
+    }
+
+    @discardableResult
+    static func assign(_ pid: pid_t, to space: UInt64) -> Bool {
+        process(connection, pid, space) == 0
+    }
+
     static func visible() -> Set<UInt64> {
         guard let raw = displays(connection),
               let list = Unmanaged<CFArray>.fromOpaque(raw).takeRetainedValue() as? [[String: Any]]
@@ -85,16 +114,22 @@ enum Sky {
     }
 
     static func frame(of display: String) -> CGRect? {
+        guard let top = NSScreen.screens.first?.frame.maxY, let frame = screen(display)?.frame else { return nil }
+        return CGRect(x: frame.minX, y: top - frame.maxY, width: frame.width, height: frame.height)
+    }
+
+    static func name(of display: String) -> String? {
+        screen(display)?.localizedName
+    }
+
+    private static func screen(_ display: String) -> NSScreen? {
         let screens = NSScreen.screens
-        guard let top = screens.first?.frame.maxY else { return nil }
-        let screen = display == "Main" ? screens.first : screens.first { screen in
+        return display == "Main" ? screens.first : screens.first { screen in
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
                   let uuid = CGDisplayCreateUUIDFromDisplayID(number)?.takeRetainedValue()
             else { return false }
             return (CFUUIDCreateString(nil, uuid) as String) == display
         }
-        guard let frame = screen?.frame else { return nil }
-        return CGRect(x: frame.minX, y: top - frame.maxY, width: frame.width, height: frame.height)
     }
 
     static func windows(in spaces: [UInt64]) -> [Window] {

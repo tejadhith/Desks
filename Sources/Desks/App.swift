@@ -8,6 +8,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private let store = Store()
     private var panel: Panel!
     private var status: NSStatusItem!
+    private var hosting: NSView!
     private var bag = Set<AnyCancellable>()
 
     static func main() {
@@ -20,9 +21,14 @@ final class Delegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel = Panel(frame: initial())
-        let hosting = NSHostingView(rootView: Note().environmentObject(store))
-        hosting.sizingOptions = []
-        panel.contentView = hosting
+        let view = NSHostingView(rootView: Note().environmentObject(store))
+        view.sizingOptions = []
+        view.autoresizingMask = [.width, .minYMargin]
+        hosting = view
+        let stage = NSView(frame: NSRect(origin: .zero, size: panel.frame.size))
+        stage.addSubview(view)
+        panel.contentView = stage
+        stretch()
         panel.setFrameUsingName("Desks")
         panel.setFrameAutosaveName("Desks")
         panel.setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - Style.header, width: 300, height: Style.header), display: false)
@@ -41,6 +47,10 @@ final class Delegate: NSObject, NSApplicationDelegate {
 
         Publishers.CombineLatest(store.$height, store.$collapsed)
             .sink { [weak self] height, collapsed in self?.fit(height, collapsed) }
+            .store(in: &bag)
+
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .sink { [weak self] _ in self?.stretch() }
             .store(in: &bag)
 
         store.snap = { [weak self] in self?.anchor() }
@@ -75,16 +85,25 @@ final class Delegate: NSObject, NSApplicationDelegate {
         return NSRect(x: screen.maxX - 316, y: screen.maxY - 16 - Style.header, width: 300, height: Style.header)
     }
 
+    private func stretch() {
+        let tallest = NSScreen.screens.map(\.visibleFrame.height).max() ?? 1000
+        let stage = panel.contentView?.bounds ?? .zero
+        hosting.frame = NSRect(x: 0, y: stage.height - tallest, width: stage.width, height: tallest)
+    }
+
     private func fit(_ content: CGFloat, _ collapsed: Bool) {
         let screen = (panel.screen ?? NSScreen.main)?.visibleFrame ?? .zero
-        let overflow = Style.header + content > screen.height - 32
+        let room = screen.height - 32
+        let limit = room - Style.header
+        if store.limit != limit { store.limit = limit }
+        let overflow = content > limit
         if store.overflow != overflow { store.overflow = overflow }
-        let height = collapsed ? Style.header : min(Style.header + content, screen.height - 32)
+        let height = collapsed ? Style.header : min(Style.header + content, room)
         guard abs(panel.frame.height - height) > 0.5 else { return }
         var frame = panel.frame
         frame.origin.y = frame.maxY - height
         frame.size.height = height
-        panel.setFrame(frame, display: true)
+        panel.setFrame(frame, display: false)
     }
 
     @objc private func toggle() {

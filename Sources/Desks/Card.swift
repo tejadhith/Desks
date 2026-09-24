@@ -101,7 +101,7 @@ struct Card: View {
     @ViewBuilder
     private var details: some View {
         if let number = space?.number {
-            Text(["Desktop \(number)", store.shortcut(for: space)].compactMap { $0 }.joined(separator: " · "))
+            Text(["Desktop \(number)", store.screen(of: space), store.shortcut(for: space)].compactMap { $0 }.joined(separator: " · "))
                 .font(.grotesk(11, .medium))
                 .opacity(0.7)
                 .padding(.leading, Style.indent)
