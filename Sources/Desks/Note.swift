@@ -4,6 +4,7 @@ struct Note: View {
     @EnvironmentObject var store: Store
     @State private var draft: String?
     @FocusState private var typing: Bool
+    @AppStorage("folded.upcoming") private var folded = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,8 +50,10 @@ struct Note: View {
             if let notice = store.notice { banner(notice) }
             if draft != nil { composer }
             ForEach($store.items) { $item in
-                Card(item: $item)
-                line
+                if store.started(item) {
+                    Card(item: $item)
+                    line
+                }
             }
             if store.items.isEmpty && draft == nil { empty }
             ForEach(store.loose, id: \.id) { space in
@@ -59,6 +62,18 @@ struct Note: View {
             }
             if let home = store.home {
                 Loose(space: home, home: true)
+            }
+            if !store.upcoming.isEmpty {
+                line
+                upcoming
+                if !folded {
+                    ForEach($store.items) { $item in
+                        if !store.started(item) {
+                            line
+                            Card(item: $item)
+                        }
+                    }
+                }
             }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -97,7 +112,7 @@ struct Note: View {
                 Image(systemName: "plus")
             }
             .disabled(store.busy || !store.trusted)
-            .help("New task on a new desktop")
+            .help("New task")
             Button {
                 store.collapsed.toggle()
             } label: {
@@ -119,15 +134,61 @@ struct Note: View {
                 .textFieldStyle(.plain)
                 .font(.grotesk(13, .semibold))
                 .focused($typing)
-                .onSubmit(commit)
+                .onSubmit { commit(later: false) }
                 .onExitCommand { draft = nil }
                 .onChange(of: typing) { _, now in
                     if !now && (draft ?? "").isEmpty { draft = nil }
                 }
+            Button {
+                commit(later: true)
+            } label: {
+                Image(systemName: "tray.and.arrow.down")
+            }
+            .keyboardShortcut(typing ? KeyboardShortcut(.return, modifiers: .command) : nil)
+            .help("Save for later · ⌘↩")
+            Button {
+                commit(later: false)
+            } label: {
+                Image(systemName: "play.fill")
+            }
+            .help("Start now on a new desktop · ↩")
         }
+        .buttonStyle(Glyph())
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
         .background(Color.wash)
+    }
+
+    private var upcoming: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { folded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Upcoming")
+                        .font(.grotesk(12, .medium))
+                        .opacity(0.7)
+                    Text("\(store.upcoming.count)")
+                        .font(.grotesk(11, .medium))
+                        .monospacedDigit()
+                        .opacity(0.5)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { folded.toggle() }
+            } label: {
+                Image(systemName: folded ? "chevron.down" : "chevron.up")
+            }
+            .buttonStyle(Glyph())
+            .opacity(0.8)
+            .help(folded ? "Expand" : "Collapse")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.deep.opacity(0.35))
     }
 
     private var locked: some View {
@@ -187,10 +248,12 @@ struct Note: View {
         DispatchQueue.main.async { typing = true }
     }
 
-    private func commit() {
+    private func commit(later: Bool) {
         let title = (draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         draft = nil
-        if !title.isEmpty { store.add(title) }
+        guard !title.isEmpty else { return }
+        if later { folded = false }
+        store.add(title, later: later)
     }
 }
 

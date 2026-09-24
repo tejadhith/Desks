@@ -5,8 +5,16 @@ struct Item: Codable, Identifiable, Equatable {
     var title: String
     var detail = ""
     var space: String?
+    var origin: String?
     var folded = true
+    var todos: [Todo] = []
     var created = Date()
+}
+
+struct Todo: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var text: String
+    var done = false
 }
 
 extension Item {
@@ -16,7 +24,9 @@ extension Item {
         title = try values.decode(String.self, forKey: .title)
         detail = try values.decodeIfPresent(String.self, forKey: .detail) ?? ""
         space = try values.decodeIfPresent(String.self, forKey: .space)
+        origin = try values.decodeIfPresent(String.self, forKey: .origin)
         folded = try values.decodeIfPresent(Bool.self, forKey: .folded) ?? true
+        todos = try values.decodeIfPresent([Todo].self, forKey: .todos) ?? []
         created = try values.decodeIfPresent(Date.self, forKey: .created) ?? Date()
     }
 }

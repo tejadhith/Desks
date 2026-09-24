@@ -4,7 +4,14 @@ struct Card: View {
     @EnvironmentObject var store: Store
     @Binding var item: Item
     @State private var hover = false
+    @State private var entry = ""
     @FocusState private var naming: Bool
+    @FocusState private var field: Field?
+
+    enum Field: Hashable {
+        case todo(UUID)
+        case add
+    }
 
     private var space: Sky.Space? { store.space(for: item) }
     private var active: Bool { space?.id == store.current }
@@ -30,35 +37,52 @@ struct Card: View {
                         }
                 } else {
                     Button {
-                        store.open(item)
+                        if space == nil {
+                            withAnimation(.easeInOut(duration: 0.15)) { item.folded.toggle() }
+                        } else {
+                            store.open(item)
+                        }
                     } label: {
                         HStack(spacing: 8) {
                             Badge(label: space?.number.map(String.init) ?? "–", active: active)
                             Text(item.title.isEmpty ? "Untitled" : item.title)
                                 .lineLimit(1)
                                 .opacity(item.title.isEmpty ? 0.7 : 1)
-                            if item.folded { Apps(windows: windows) }
+                            if item.folded {
+                                tally
+                                Apps(windows: windows)
+                            }
                             Spacer(minLength: 0)
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Switch to this task's desktop")
+                    .help(space == nil ? "Show details" : "Switch to this task's desktop")
                 }
                 Group {
-                    Button {
-                        store.pull(item)
-                    } label: {
-                        Image(systemName: "rectangle.stack.badge.plus")
+                    if space == nil {
+                        Button {
+                            store.create(for: item)
+                        } label: {
+                            Image(systemName: "play.fill")
+                        }
+                        .help("Start · opens a new desktop for this task")
+                        .disabled(store.busy || !store.trusted)
+                    } else {
+                        Button {
+                            store.pull(item)
+                        } label: {
+                            Image(systemName: "rectangle.stack.badge.plus")
+                        }
+                        .help("Send the front window here")
+                        .disabled(store.busy)
                     }
-                    .help("Send the front window here")
-                    .disabled(space == nil || store.busy)
                     Button {
                         store.remove(item)
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .help("Delete task · its windows move to Desktop 1")
+                    .help(space == nil ? "Delete task" : "Delete task · its windows move to Desktop 1")
                 }
                 .buttonStyle(Glyph())
                 .opacity(hover || active ? 1 : 0.35)
@@ -85,16 +109,37 @@ struct Card: View {
         .zone(space?.id, in: store)
         .onHover { hover = $0 }
         .contextMenu {
-            Button("Switch to Task") { store.open(item) }
-                .disabled(space == nil)
+            if space == nil {
+                Button("Start on New Desktop") { store.create(for: item) }
+                    .disabled(store.busy)
+            } else {
+                Button("Switch to Task") { store.open(item) }
+            }
             Button("Rename") { store.editing = item.id }
             Button(item.folded ? "Expand" : "Collapse") { item.folded.toggle() }
             Button("Send Front Window Here") { store.pull(item) }
                 .disabled(space == nil)
             Button("Use Current Desktop") { store.claim(item) }
                 .disabled(!store.claimable)
+            if let space {
+                ForEach(store.screens.filter { $0.id != space.display }, id: \.id) { screen in
+                    Button("Move to \(screen.name)") { store.relocate(item, to: screen.id) }
+                        .disabled(store.busy)
+                }
+            }
             Divider()
             Button("Delete Task", role: .destructive) { store.remove(item) }
+        }
+    }
+
+    @ViewBuilder
+    private var tally: some View {
+        if !item.todos.isEmpty {
+            Text("\(item.todos.filter(\.done).count)/\(item.todos.count)")
+                .font(.grotesk(10, .medium))
+                .monospacedDigit()
+                .opacity(0.7)
+                .help("To-dos done")
         }
     }
 
@@ -113,6 +158,8 @@ struct Card: View {
             .lineLimit(1...8)
             .padding(.leading, Style.indent)
 
+        todos
+
         if let space {
             if windows.isEmpty {
                 Text("No windows yet · drag onto Desktop \(space.number ?? 0) in Mission Control")
@@ -127,10 +174,11 @@ struct Card: View {
             }
         } else {
             HStack(spacing: 12) {
-                Text("No desktop")
+                Text("Not started")
                     .opacity(0.7)
-                Button("New desktop") { store.create(for: item) }
+                Button("Start") { store.create(for: item) }
                     .underline()
+                    .disabled(!store.trusted)
                 Button("Use current") { store.claim(item) }
                     .underline()
                     .disabled(!store.claimable)
@@ -140,5 +188,146 @@ struct Card: View {
             .padding(.leading, Style.indent)
             .disabled(store.busy)
         }
+    }
+
+    private var todos: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(item.todos) { todo in
+                Check(todo: binding(todo.id), focus: $field, step: step) {
+                    tick(todo.id)
+                } remove: {
+                    item.todos.removeAll { $0.id == todo.id }
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 14)
+                    .opacity(0.6)
+                TextField("Add a to-do", text: $entry, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .focused($field, equals: .add)
+                    .onSubmit(append)
+                    .onKeyPress(.upArrow) { step(-1) }
+                    .onExitCommand {
+                        entry = ""
+                        field = nil
+                    }
+            }
+        }
+        .font(.grotesk(12))
+        .padding(.leading, Style.indent - 20)
+        .onChange(of: field) { old, _ in
+            guard case .todo(let id)? = old,
+                  item.todos.first(where: { $0.id == id })?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
+            else { return }
+            item.todos.removeAll { $0.id == id }
+        }
+    }
+
+    private func tick(_ id: UUID) {
+        guard let index = item.todos.firstIndex(where: { $0.id == id }) else { return }
+        item.todos[index].done.toggle()
+        land(order[index + 1])
+    }
+
+    private func land(_ target: Field) {
+        var done = false
+        if case .todo(let id) = target { done = item.todos.first { $0.id == id }?.done ?? false }
+        Panel.main?.expect { editor in
+            editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+            Panel.main?.strike(editor, done)
+        }
+        field = target
+    }
+
+    private var order: [Field] {
+        item.todos.map { .todo($0.id) } + [.add]
+    }
+
+    private func step(_ offset: Int) -> KeyPress.Result {
+        guard let field, let index = order.firstIndex(of: field), order.indices.contains(index + offset) else { return .ignored }
+        land(order[index + offset])
+        return .handled
+    }
+
+    private func binding(_ id: UUID) -> Binding<Todo> {
+        Binding {
+            item.todos.first { $0.id == id } ?? Todo(id: id, text: "")
+        } set: { todo in
+            guard let index = item.todos.firstIndex(where: { $0.id == id }), item.todos[index] != todo else { return }
+            item.todos[index] = todo
+        }
+    }
+
+    private func append() {
+        let text = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        entry = ""
+        guard !text.isEmpty else { return }
+        item.todos.append(Todo(text: text))
+        DispatchQueue.main.async { field = .add }
+    }
+}
+
+private struct Check: View {
+    @Binding var todo: Todo
+    let focus: FocusState<Card.Field?>.Binding
+    let step: (Int) -> KeyPress.Result
+    let tick: () -> Void
+    let remove: () -> Void
+    @State private var hover = false
+
+    private var editing: Bool { focus.wrappedValue == .todo(todo.id) }
+    private var struck: Bool { todo.done && !editing }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Button {
+                if editing {
+                    tick()
+                } else {
+                    withAnimation(.easeInOut(duration: 0.12)) { todo.done.toggle() }
+                }
+            } label: {
+                Image(systemName: todo.done ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(editing ? KeyboardShortcut(.return, modifiers: .command) : nil)
+            .help(todo.done ? "Mark as not done · ⌘↩" : "Mark as done · ⌘↩")
+            TextField("To-do", text: $todo.text, axis: .vertical)
+                .textFieldStyle(.plain)
+                .focused(focus, equals: .todo(todo.id))
+                .onSubmit { focus.wrappedValue = nil }
+                .onKeyPress(.upArrow) { step(-1) }
+                .onKeyPress(.downArrow) { step(1) }
+                .foregroundStyle(struck ? Color.clear : Color.ink)
+                .opacity(todo.done && !struck ? 0.6 : 1)
+                .onChange(of: editing) { _, now in
+                    guard now, let panel = Panel.main, let editor = panel.firstResponder as? NSTextView, editor.string == todo.text else { return }
+                    panel.strike(editor, todo.done)
+                }
+                .overlay(alignment: .topLeading) {
+                    if struck {
+                        Text(todo.text)
+                            .strikethrough()
+                            .opacity(0.6)
+                            .allowsHitTesting(false)
+                    }
+                }
+            Spacer(minLength: 0)
+            Button(action: remove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 14, height: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .opacity(hover ? 0.7 : 0)
+            .help("Remove to-do")
+        }
+        .onHover { hover = $0 }
     }
 }

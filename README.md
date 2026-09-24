@@ -7,11 +7,12 @@ Keep a short list of what you are working on in the top-right corner of the scre
 ## Features
 
 - **A desktop per task.** Creating a task adds a new desktop and takes you there. Desktop 1 stays home for unsorted windows.
-- **Descriptions.** Jot down what the task is about or what is next.
+- **Upcoming tasks.** Press `⌘↩` instead of `↩` to save a task for later without a desktop, then start it when you are ready.
+- **Descriptions and to-dos.** Jot down what the task is about and keep a checklist. `↩` adds a to-do, `↑`/`↓` move between them, and `⌘↩` checks or unchecks one and moves on. Collapsed tasks show how many are done.
 - **Live window lists.** See which windows sit on each task's desktop and click one to jump to it.
 - **Switch fast.** Click a task, or use the macOS `⌃1`–`⌃9` desktop shortcuts shown on each task.
 - **Move windows.** Drag a window's row onto a task, right-click it and choose **Send to**, or send the front window to a task with one click.
-- **Multiple displays.** Desktops on every screen are listed and switched correctly.
+- **Multiple displays.** Desktops on every screen are listed and switched correctly. Move a task to another screen from its right-click menu. When a screen is unplugged, its tasks move to the built-in screen and return when it is plugged back in.
 - **Stays out of the way.** Tasks collapse to a single line with app icons, the panel sizes itself to its content, and it snaps back to the corner after you move it.
 
 ## Requirements
@@ -38,7 +39,7 @@ macOS has no public API for desktops, so Desks combines a few techniques that do
 
 - It reads desktops and their windows through private SkyLight functions.
 - It moves a window to another desktop with SkyLight's bridged window-management operation, which works on any app's window without switching desktops. If that is unavailable it falls back to reassigning a single-window app, then to dragging the window's thumbnail in Mission Control.
-- It adds, removes, and switches desktops through Mission Control and the desktop shortcuts, so the Dock always knows about every desktop.
+- It adds, removes, and switches desktops through Mission Control and the desktop shortcuts, so the Dock always knows about every desktop. Moving a task to another screen makes a desktop there, moves the windows over, and removes the old one.
 
 Because these rely on private behavior, a macOS update can break them.
 

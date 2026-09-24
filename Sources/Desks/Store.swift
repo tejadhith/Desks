@@ -19,6 +19,7 @@ final class Store: ObservableObject {
     @Published private(set) var pointer: CGPoint = .zero
     @Published private(set) var hovered: UInt64?
     @Published private(set) var front: UInt32?
+    @Published private(set) var starting: UUID?
     private var zones: [UInt64: CGRect] = [:]
     var snap: () -> Void = {}
 
@@ -28,6 +29,8 @@ final class Store: ObservableObject {
     private var loop: Task<Void, Never>?
     private var pulse: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
+    @Published private var lost: Set<UUID> = []
+    private var returning: Set<UUID> = []
 
     init() {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -37,6 +40,8 @@ final class Store: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         items = (try? decoder.decode([Item].self, from: Data(contentsOf: url))) ?? []
+        spaces = Sky.spaces()
+        current = Sky.current()
         start()
     }
 
@@ -55,6 +60,14 @@ final class Store: ObservableObject {
 
     var claimable: Bool {
         current != home?.id && !items.contains { space(for: $0)?.id == current }
+    }
+
+    var upcoming: [Item] {
+        items.filter { !started($0) }
+    }
+
+    func started(_ item: Item) -> Bool {
+        starting == item.id || lost.contains(item.id) || space(for: item) != nil
     }
 
     func space(for item: Item) -> Sky.Space? {
@@ -83,29 +96,103 @@ final class Store: ObservableObject {
         space?.number.flatMap(Keys.label(for:))
     }
 
-    func add(_ title: String) {
+    func add(_ title: String, later: Bool = false) {
         let item = Item(title: title)
         items.append(item)
-        create(for: item)
+        if !later { create(for: item) }
     }
 
     func create(for item: Item) {
         guard ready() else { return }
         let id = item.id
         let display = spaces.first { $0.id == current }?.display ?? home?.display ?? ""
+        starting = id
         run {
-            let before = Set(Sky.spaces().map(\.id))
-            guard await Mission.add(on: display) else { return }
-            var made: Sky.Space?
-            for _ in 0..<30 where made == nil {
-                try? await Task.sleep(for: .milliseconds(100))
-                made = Sky.spaces().first { !before.contains($0.id) }
-            }
-            await Mission.close()
-            guard let made else { return }
+            defer { self.starting = nil }
+            guard let made = await self.provision(on: display) else { return }
             self.link(id, to: made)
             try? await Task.sleep(for: .milliseconds(700))
             await self.go(to: made)
+        }
+    }
+
+    private func provision(on display: String) async -> Sky.Space? {
+        let before = Set(Sky.spaces().map(\.id))
+        guard await Mission.add(on: display) else { return nil }
+        var made: Sky.Space?
+        for _ in 0..<30 where made == nil {
+            try? await Task.sleep(for: .milliseconds(100))
+            made = Sky.spaces().first { !before.contains($0.id) }
+        }
+        await Mission.close()
+        return made
+    }
+
+    private func restore(_ id: UUID) {
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            while busy { try? await Task.sleep(for: .milliseconds(200)) }
+            guard trusted, let item = items.first(where: { $0.id == id }), let origin = item.origin,
+                  let target = Sky.spaces().first(where: { $0.uuid == origin })
+            else {
+                returning.remove(id)
+                return
+            }
+            let stand = Sky.spaces().first { $0.uuid == item.space && $0.display != target.display }
+            let title = item.title.isEmpty ? "Untitled" : item.title
+            run {
+                defer { self.returning.remove(id) }
+                if let stand {
+                    let windows = Sky.windows(in: [stand.id])
+                    if !windows.isEmpty {
+                        let back = Sky.current()
+                        if !Sky.visible().contains(stand.id) {
+                            await self.go(to: stand)
+                            try? await Task.sleep(for: .milliseconds(350))
+                        }
+                        let moved = await self.cross(windows, to: target)
+                        try? await Task.sleep(for: .milliseconds(300))
+                        if back != stand.id, Sky.current() != back, let previous = Sky.spaces().first(where: { $0.id == back }) {
+                            await self.go(to: previous)
+                        }
+                        guard moved else {
+                            if let index = self.items.firstIndex(where: { $0.id == id }) { self.items[index].origin = nil }
+                            self.tell("Couldn't bring every window of \(title) back to its screen, so it stays on Desktop \(stand.number ?? 0)")
+                            return
+                        }
+                    }
+                }
+                self.link(id, to: target)
+                if let stand { await self.discard(stand) }
+                let number = Sky.spaces().first { $0.uuid == origin }?.number ?? 0
+                self.tell("\(title) is back on Desktop \(number) on its screen")
+            }
+        }
+    }
+
+    private func rehome(_ id: UUID, bringing windows: [UInt32]) {
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            while busy { try? await Task.sleep(for: .milliseconds(200)) }
+            guard trusted, let uuid = items.first(where: { $0.id == id })?.space,
+                  !Sky.spaces().contains(where: { $0.uuid == uuid }),
+                  let display = Sky.spaces().first(where: { $0.number != nil })?.display
+            else {
+                lost.remove(id)
+                return
+            }
+            run {
+                defer { self.lost.remove(id) }
+                guard let made = await self.provision(on: display) else { return }
+                self.link(id, to: made)
+                if let index = self.items.firstIndex(where: { $0.id == id }) { self.items[index].origin = uuid }
+                try? await Task.sleep(for: .milliseconds(700))
+                let live = Set(Sky.windows(in: Sky.spaces().map(\.id)).map(\.id))
+                let moving = windows.filter(live.contains)
+                if !moving.isEmpty { _ = Bridge.move(moving, to: made.id) }
+                let title = self.items.first { $0.id == id }?.title ?? ""
+                self.tell("\(title.isEmpty ? "Untitled" : title) moved to Desktop \(made.number ?? 0) because its screen was disconnected")
+            }
         }
     }
 
@@ -133,18 +220,48 @@ final class Store: ObservableObject {
             tell("Desktop \(space.number ?? 0) is the only desktop on its screen, so it stays")
             return
         }
-        let fallback = siblings.first { $0 == home } ?? siblings.last { $0.index < space.index } ?? siblings[0]
-        let back = current
+        run { await self.discard(space) }
+    }
+
+    private func discard(_ space: Sky.Space) async {
+        let desktops = Sky.spaces().filter { $0.number != nil }
+        guard let space = desktops.first(where: { $0.id == space.id }) else { return }
+        let siblings = desktops.filter { $0.display == space.display && $0.id != space.id }
+        guard !siblings.isEmpty else { return }
+        let fallback = siblings.first { $0.id == desktops.first?.id } ?? siblings.last { $0.index < space.index } ?? siblings[0]
+        let back = Sky.current()
+        if !Sky.visible().contains(fallback.id) {
+            await go(to: fallback)
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+        guard await Mission.remove(at: space.index, on: space.display) else { return }
+        try? await Task.sleep(for: .milliseconds(500))
+        if back != space.id, back != Sky.current(), let previous = Sky.spaces().first(where: { $0.id == back }) {
+            await go(to: previous)
+        }
+    }
+
+    func relocate(_ item: Item, to display: String) {
+        guard let space = space(for: item), space.display != display, ready() else { return }
+        let id = item.id
+        let showing = Sky.visible().contains(space.id)
         run {
-            if !Sky.visible().contains(fallback.id) {
-                await self.go(to: fallback)
-                try? await Task.sleep(for: .milliseconds(400))
+            guard let made = await self.provision(on: display) else {
+                self.tell("Couldn't make a desktop on that screen")
+                return
             }
-            guard await Mission.remove(at: space.index, on: space.display) else { return }
-            try? await Task.sleep(for: .milliseconds(500))
-            if back != space.id, back != Sky.current(), let previous = Sky.spaces().first(where: { $0.id == back }) {
-                await self.go(to: previous)
+            let windows = Sky.windows(in: [space.id]).map(\.id)
+            if !windows.isEmpty { _ = Bridge.move(windows, to: made.id) }
+            for _ in 0..<20 where !Sky.windows(in: [space.id]).isEmpty {
+                try? await Task.sleep(for: .milliseconds(100))
             }
+            self.link(id, to: made)
+            if Sky.windows(in: [space.id]).isEmpty {
+                await self.discard(space)
+            } else {
+                self.tell("Some windows stayed on Desktop \(space.number ?? 0)")
+            }
+            if showing { await self.go(to: made) }
         }
     }
 
@@ -183,14 +300,7 @@ final class Store: ObservableObject {
             }
             var moved = false
             if let origin, origin.display != space.display {
-                if !Sky.visible().contains(space.id) {
-                    await self.go(to: space)
-                    try? await Task.sleep(for: .milliseconds(350))
-                }
-                if let frame = Sky.frame(of: space.display), Carry.place(window, in: frame) {
-                    try? await Task.sleep(for: .milliseconds(400))
-                    moved = Sky.windows(in: [space.id]).contains { $0.id == window.id }
-                }
+                moved = await self.cross([window], to: space)
             } else {
                 moved = await Carry.run(window, to: space)
             }
@@ -202,6 +312,18 @@ final class Store: ObservableObject {
                 self.tell("Couldn't move \(window.app). Drag it in Mission Control instead.")
             }
         }
+    }
+
+    private func cross(_ windows: [Sky.Window], to space: Sky.Space) async -> Bool {
+        if !Sky.visible().contains(space.id) {
+            await go(to: space)
+            try? await Task.sleep(for: .milliseconds(350))
+        }
+        guard let frame = Sky.frame(of: space.display) else { return false }
+        for window in windows { _ = Carry.place(window, in: frame) }
+        try? await Task.sleep(for: .milliseconds(400))
+        let there = Set(Sky.windows(in: [space.id]).map(\.id))
+        return windows.allSatisfy { there.contains($0.id) }
     }
 
     func pull(_ item: Item) {
@@ -272,6 +394,19 @@ final class Store: ObservableObject {
                 return window
             }
             .sorted { ($0.app, $0.id) < ($1.app, $1.id) }
+        let screens = Set(spaces.map(\.display))
+        for item in items where !lost.contains(item.id) {
+            guard let uuid = item.space, let old = self.spaces.first(where: { $0.uuid == uuid }), old != home,
+                  !spaces.contains(where: { $0.uuid == uuid }), !screens.contains(old.display)
+            else { continue }
+            lost.insert(item.id)
+            rehome(item.id, bringing: self.windows.filter { $0.space == old.id }.map(\.id))
+        }
+        for item in items where !returning.contains(item.id) && !lost.contains(item.id) {
+            guard let origin = item.origin, spaces.contains(where: { $0.uuid == origin }) else { continue }
+            returning.insert(item.id)
+            restore(item.id)
+        }
         if spaces != self.spaces { self.spaces = spaces }
         if windows != self.windows { self.windows = windows }
         if current != self.current { self.current = current }
@@ -320,6 +455,7 @@ final class Store: ObservableObject {
     private func link(_ id: UUID, to space: Sky.Space) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].space = space.uuid
+        items[index].origin = nil
     }
 
     private func ready() -> Bool {
