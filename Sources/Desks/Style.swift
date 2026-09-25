@@ -28,6 +28,16 @@ extension View {
         })
     }
 
+    func inbox(_ agent: Agent, in store: Store) -> some View {
+        background(GeometryReader { proxy in
+            let frame = proxy.frame(in: .named(Style.space))
+            Color.clear
+                .onAppear { store.place(inbox: agent, frame) }
+                .onChange(of: frame) { _, frame in store.place(inbox: agent, frame) }
+                .onDisappear { store.place(inbox: agent, nil) }
+        })
+    }
+
     func zone(_ id: UInt64?, in store: Store) -> some View {
         background(GeometryReader { proxy in
             let frame = proxy.frame(in: .named(Style.space))
@@ -49,6 +59,7 @@ extension Color {
     static let wash = Color.white.opacity(0.12)
     static let mist = Color.white.opacity(0.22)
     static let ink = Color.white
+    static let amber = Color(.sRGB, red: 1.0, green: 0.76, blue: 0.2)
 }
 
 extension Font {

@@ -17,7 +17,7 @@ struct Card: View {
 
     private var space: Sky.Space? { store.space(for: item) }
     private var active: Bool { space?.id == store.current }
-    private var targeted: Bool { space != nil && store.hovered == space?.id }
+    private var targeted: Bool { (space != nil && store.hovered == space?.id) || store.aim == .card(item.id) }
     private var windows: [Sky.Window] { space.map(store.windows(on:)) ?? [] }
     private var lifted: Bool { store.lift?.id == item.id }
 
@@ -47,6 +47,9 @@ struct Card: View {
                             if item.folded {
                                 tally
                                 Apps(windows: windows)
+                                if let status = Status.urgent(item.chats.compactMap { store.beats[$0.id]?.status }) {
+                                    Dot(status: status)
+                                }
                             }
                             Spacer(minLength: 0)
                         }
@@ -213,6 +216,19 @@ struct Card: View {
             .font(.grotesk(11, .medium))
             .padding(.leading, Style.indent)
             .disabled(store.busy)
+        }
+
+        if !item.chats.isEmpty {
+            if space != nil {
+                Rectangle()
+                    .fill(Color.ink.opacity(0.14))
+                    .frame(height: 1)
+                    .padding(.leading, Style.indent - 6)
+            }
+            VStack(spacing: 0) {
+                ForEach(store.chats(of: item)) { Talk(chat: $0, item: item) }
+            }
+            .padding(.leading, Style.indent - 6)
         }
     }
 

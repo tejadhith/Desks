@@ -8,6 +8,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private let store = Store()
     private var panel: Panel!
     private var status: NSStatusItem!
+    private var agents: NSMenuItem!
     private var hosting: NSView!
     private var away: Away!
     private var hotkey: Hotkey!
@@ -42,6 +43,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         }
         panel.orderFrontRegardless()
         if !Access.trusted { Access.prompt() }
+        if Hooks.connected { Task.detached { Hooks.install() } }
 
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         status.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Desks")
@@ -50,6 +52,9 @@ final class Delegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Snap to Top Right", action: #selector(anchor), keyEquivalent: "")
         menu.addItem(withTitle: "Tuck Away or Bring Back (Double-Tap ⌃)", action: #selector(slide), keyEquivalent: "")
         menu.addItem(withTitle: "Collapse or Expand (Double-Tap ⌥)", action: #selector(shrink), keyEquivalent: "")
+        menu.addItem(.separator())
+        agents = menu.addItem(withTitle: "", action: #selector(connect), keyEquivalent: "")
+        name()
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Desks", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -195,6 +200,29 @@ final class Delegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggle() {
         if panel.isVisible { panel.orderOut(nil) } else { panel.orderFrontRegardless() }
+    }
+
+    private func name() {
+        agents.title = Hooks.connected ? "Disconnect Coding Agents" : "Connect Coding Agents"
+        agents.toolTip = "Claude Code, Codex, Devin and VS Code report their conversations to Desks through hooks"
+    }
+
+    @objc private func connect() {
+        if Hooks.connected {
+            Hooks.remove()
+            store.tell("Disconnected coding agents. Desks removed its hooks from their settings.")
+        } else {
+            let agents = Hooks.install()
+            if agents.isEmpty {
+                store.tell("No supported coding agents found. Desks works with Claude Code, Codex, Devin and VS Code.")
+            } else {
+                let names = agents.map(\.name)
+                let list = names.count > 1 ? names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1] : names[0]
+                let codex = agents.contains(.codex) ? " In Codex, approve the Desks hooks with /hooks." : ""
+                store.tell("Connected \(list). Conversations appear after their next prompt.\(codex)")
+            }
+        }
+        name()
     }
 
     @objc private func quit() {

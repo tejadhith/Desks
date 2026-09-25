@@ -63,7 +63,7 @@ enum Carry {
         return true
     }
 
-    private static func bounds(_ id: UInt32) -> CGRect? {
+    static func bounds(_ id: UInt32) -> CGRect? {
         guard let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(id)) as? [[String: Any]])?.first,
               let bounds = info[kCGWindowBounds as String] as? NSDictionary
         else { return nil }

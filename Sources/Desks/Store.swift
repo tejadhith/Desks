@@ -9,6 +9,11 @@ struct Lift: Equatable {
     var slot: Int
 }
 
+enum Aim: Equatable {
+    case card(UUID)
+    case inbox(Agent)
+}
+
 @MainActor
 final class Store: ObservableObject {
     @Published var items: [Item] { didSet { save() } }
@@ -31,7 +36,14 @@ final class Store: ObservableObject {
     @Published private(set) var hovered: UInt64?
     @Published private(set) var front: UInt32?
     @Published private(set) var starting: UUID?
+    @Published private(set) var beats: [String: Beat] = [:]
+    @Published private(set) var named: [String: String] = [:]
+    @Published private(set) var hidden: Set<String> = []
+    @Published private(set) var held: Chat?
+    @Published private(set) var aim: Aim?
     private var zones: [UInt64: CGRect] = [:]
+    private var inboxes: [Agent: CGRect] = [:]
+    private var looked: [String: Date] = [:]
     var snap: () -> Void = {}
 
     private let url: URL
@@ -39,6 +51,7 @@ final class Store: ObservableObject {
     private var fronts: [UInt64: Sky.Window] = [:]
     private var loop: Task<Void, Never>?
     private var pulse: Task<Void, Never>?
+    private var sense: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     @Published private var lost: Set<UUID> = []
     private var returning: Set<UUID> = []
@@ -88,6 +101,31 @@ final class Store: ObservableObject {
 
     func windows(on space: Sky.Space) -> [Sky.Window] {
         windows.filter { $0.space == space.id }
+    }
+
+    var linked: Set<String> {
+        Set(items.flatMap { $0.chats.map(\.id) })
+    }
+
+    func inbox(_ agent: Agent) -> [Chat] {
+        let cutoff = Date().addingTimeInterval(-86400)
+        let linked = linked
+        return beats.values
+            .filter { $0.agent == agent && $0.time > cutoff && !linked.contains($0.id) && !hidden.contains($0.id) }
+            .sorted { $0.time > $1.time }
+            .map { Chat(agent: $0.agent, session: $0.session, title: named[$0.id] ?? "") }
+    }
+
+    func chats(of item: Item) -> [Chat] {
+        item.chats.map { chat in
+            var chat = chat
+            if let title = named[chat.id], !title.isEmpty { chat.title = title }
+            return chat
+        }
+    }
+
+    func homes(for chat: Chat) -> [Item] {
+        items.filter { !$0.chats.contains { $0.id == chat.id } }
     }
 
     var screens: [(id: String, name: String)] {
@@ -286,6 +324,74 @@ final class Store: ObservableObject {
         open(space)
     }
 
+    func open(_ chat: Chat, in item: Item?) {
+        guard ready() else { return }
+        let task = item.flatMap(space(for:))
+        run {
+            let window = chat.agent.app.flatMap { self.main(of: $0.processIdentifier, for: chat.agent) }
+            if let task {
+                if !Sky.visible().contains(task.id) {
+                    await self.go(to: task)
+                    try? await Task.sleep(for: .milliseconds(400))
+                }
+                if let window, window.space != task.id, Bridge.move([window.id], to: task.id) {
+                    _ = await Carry.arrived(window.id, in: task.id)
+                }
+            } else if let window, !Sky.visible().contains(window.space), let space = Sky.spaces().first(where: { $0.id == window.space }) {
+                await self.go(to: space)
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+            await self.reveal(chat)
+        }
+    }
+
+    private func reveal(_ chat: Chat) async {
+        let agent = chat.agent
+        guard let url = agent.link(chat.session),
+              let target = agent.app?.bundleURL ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: agent.bundle)
+        else {
+            tell("\(agent.name) isn't installed")
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        do {
+            _ = try await NSWorkspace.shared.open([url], withApplicationAt: target, configuration: configuration)
+        } catch {
+            tell("Couldn't open the conversation in \(agent.name)")
+        }
+    }
+
+    private func main(of pid: pid_t, for agent: Agent) -> Sky.Window? {
+        let found = Sky.windows(in: Sky.spaces().filter { $0.number != nil }.map(\.id)).filter { $0.pid == pid }
+        if agent == .code, let window = found.first(where: { id in windows.first { $0.id == id.id }?.title == "Agents" }) {
+            return window
+        }
+        func area(_ window: Sky.Window) -> CGFloat {
+            Carry.bounds(window.id).map { $0.width * $0.height } ?? 0
+        }
+        return found.max { area($0) < area($1) }
+    }
+
+    func attach(_ chat: Chat, to id: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == id }), !items[index].chats.contains(where: { $0.id == chat.id }) else { return }
+        var next = items
+        for position in next.indices { next[position].chats.removeAll { $0.id == chat.id } }
+        var chat = chat
+        if let title = named[chat.id], !title.isEmpty { chat.title = title }
+        next[index].chats.append(chat)
+        items = next
+    }
+
+    func detach(_ chat: Chat) {
+        guard items.contains(where: { $0.chats.contains { $0.id == chat.id } }) else { return }
+        items = items.map { item in
+            var item = item
+            item.chats.removeAll { $0.id == chat.id }
+            return item
+        }
+    }
+
     func focus(_ window: Sky.Window) {
         guard ready() else { return }
         run {
@@ -358,6 +464,38 @@ final class Store: ObservableObject {
         cards[id] = frame
     }
 
+    func place(inbox agent: Agent, _ frame: CGRect?) {
+        inboxes[agent] = frame
+    }
+
+    func track(_ chat: Chat, at point: CGPoint) {
+        if held != chat { held = chat }
+        pointer = point
+        let aim = aim(for: chat, at: point)
+        if self.aim != aim { self.aim = aim }
+    }
+
+    func release(_ chat: Chat, at point: CGPoint) {
+        let aim = aim(for: chat, at: point)
+        held = nil
+        self.aim = nil
+        switch aim {
+        case .card(let id): attach(chat, to: id)
+        case .inbox: detach(chat)
+        case nil: break
+        }
+    }
+
+    private func aim(for chat: Chat, at point: CGPoint) -> Aim? {
+        if let id = cards.filter({ $0.value.contains(point) }).min(by: { $0.value.height < $1.value.height })?.key {
+            return .card(id)
+        }
+        if inboxes[chat.agent]?.contains(point) == true {
+            return .inbox(chat.agent)
+        }
+        return nil
+    }
+
     func lift(_ item: Item, by translation: CGFloat) {
         if lift?.id != item.id {
             let group = started(item)
@@ -407,6 +545,12 @@ final class Store: ObservableObject {
         if let id = cards.filter({ $0.value.contains(point) }).min(by: { $0.value.height < $1.value.height })?.key,
            let index = items.firstIndex(where: { $0.id == id }) {
             withAnimation(Style.fold(items[index].folded)) { items[index].folded.toggle() }
+            return true
+        }
+        if let agent = inboxes.first(where: { $0.value.contains(point) })?.key {
+            let key = "folded.agent." + agent.rawValue
+            let folded = UserDefaults.standard.bool(forKey: key)
+            withAnimation(Style.fold(folded)) { UserDefaults.standard.set(!folded, forKey: key) }
             return true
         }
         guard let id = zone(at: point), let space = desktops.first(where: { $0.id == id }) else { return false }
@@ -478,7 +622,7 @@ final class Store: ObservableObject {
         if current != self.current { self.current = current }
     }
 
-    private func tell(_ message: String) {
+    func tell(_ message: String) {
         notice = message
         Task {
             try? await Task.sleep(for: .seconds(5))
@@ -563,6 +707,56 @@ final class Store: ObservableObject {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+        sense = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.listen()
+                try? await Task.sleep(for: .milliseconds(1500))
+            }
+        }
+    }
+
+    private func listen() async {
+        let found = await Task.detached { Hooks.read() }.value
+        var beats: [String: Beat] = [:]
+        for beat in found where (beats[beat.id]?.time ?? .distantPast) <= beat.time { beats[beat.id] = beat }
+        if beats != self.beats { self.beats = beats }
+        let now = Date()
+        var wanted: [String: (agent: Agent, session: String, cwd: String)] = [:]
+        for chat in items.flatMap(\.chats) { wanted[chat.id] = (chat.agent, chat.session, "") }
+        for beat in beats.values { wanted[beat.id] = (beat.agent, beat.session, beat.cwd) }
+        let due = wanted.filter { id, _ in
+            guard let last = looked[id] else { return true }
+            return now.timeIntervalSince(last) > 60 || (beats[id].map { $0.time > last } ?? false)
+        }
+        guard !due.isEmpty else { return }
+        for id in due.keys { looked[id] = now }
+        let results = await Task.detached {
+            due.map { id, value in (id: id, agent: value.agent, cwd: value.cwd, found: value.agent.look(value.session)) }
+        }.value
+        var named = self.named
+        var hidden = self.hidden
+        var titles: [String: String] = [:]
+        for result in results {
+            let title = result.found?.title ?? ""
+            if !title.isEmpty { titles[result.id] = title }
+            let fallback = result.cwd.isEmpty ? "Untitled" : URL(fileURLWithPath: result.cwd).lastPathComponent
+            named[result.id] = title.isEmpty ? (named[result.id] ?? fallback) : title
+            if result.found?.hidden == true || (result.found == nil && result.agent == .codex) {
+                hidden.insert(result.id)
+            } else {
+                hidden.remove(result.id)
+            }
+        }
+        if named != self.named { self.named = named }
+        if hidden != self.hidden { self.hidden = hidden }
+        let next = items.map { item in
+            var item = item
+            for index in item.chats.indices {
+                if let title = titles[item.chats[index].id] { item.chats[index].title = title }
+            }
+            return item
+        }
+        if next != items { items = next }
     }
 
     private func glance() {

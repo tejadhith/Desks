@@ -23,7 +23,7 @@ struct Note: View {
         .coordinateSpace(name: Style.space)
         .overlay(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                if let label = store.carrying.map({ $0.title.isEmpty ? $0.app : $0.title }) {
+                if let label = store.carrying.map({ $0.title.isEmpty ? $0.app : $0.title }) ?? store.held.map({ $0.title.isEmpty ? $0.agent.name : $0.title }) {
                     Text(label)
                         .font(.grotesk(11, .medium))
                         .lineLimit(1)
@@ -67,6 +67,10 @@ struct Note: View {
             }
             if let home = store.home {
                 Loose(space: home, home: true)
+            }
+            ForEach(Agent.allCases.filter { !store.inbox($0).isEmpty || store.held?.agent == $0 }, id: \.self) { agent in
+                line
+                Inbox(agent: agent)
             }
             if !store.upcoming.isEmpty {
                 line

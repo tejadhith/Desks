@@ -8,6 +8,7 @@ struct Item: Codable, Identifiable, Equatable {
     var origin: String?
     var folded = true
     var todos: [Todo] = []
+    var chats: [Chat] = []
     var created = Date()
 }
 
@@ -27,6 +28,7 @@ extension Item {
         origin = try values.decodeIfPresent(String.self, forKey: .origin)
         folded = try values.decodeIfPresent(Bool.self, forKey: .folded) ?? true
         todos = try values.decodeIfPresent([Todo].self, forKey: .todos) ?? []
+        chats = try values.decodeIfPresent([Chat].self, forKey: .chats) ?? []
         created = try values.decodeIfPresent(Date.self, forKey: .created) ?? Date()
     }
 }
