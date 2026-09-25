@@ -13,9 +13,11 @@ Keep a short list of what you are working on in the top-right corner of the scre
 - **Descriptions and to-dos.** Jot down what the task is about and keep a checklist. `↩` adds a to-do, `↑`/`↓` move between them, and `⌘↩` checks or unchecks one and moves on. Collapsed tasks show how many are done.
 - **Live window lists.** See which windows sit on each task's desktop and click one to jump to it.
 - **Switch fast.** Click a task, or use the macOS `⌃1`–`⌃9` desktop shortcuts shown on each task.
+- **Organize.** Drag a task by its name to reorder it; the others slide out of the way. Double-click a name to rename it, and hover a long name to scroll the rest into view.
 - **Move windows.** Drag a window's row onto a task, right-click it and choose **Send to**, or send the front window to a task with one click.
 - **Multiple displays.** Desktops on every screen are listed and switched correctly. Move a task to another screen from its right-click menu. When a screen is unplugged, its tasks move to the built-in screen and return when it is plugged back in.
-- **Stays out of the way.** Tasks collapse to a single line with app icons, the panel sizes itself to its content, and it snaps back to the corner after you move it.
+- **Stays out of the way.** Tasks collapse to a single line with app icons, the panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
+- **Gestures from anywhere.** Double-tap `⌃` to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold `⌃` to see through it. Double-tap `⌥` to fold the task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel.
 
 ## Requirements
 

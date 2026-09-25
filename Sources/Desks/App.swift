@@ -9,6 +9,12 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private var panel: Panel!
     private var status: NSStatusItem!
     private var hosting: NSView!
+    private var away: Away!
+    private var hotkey: Hotkey!
+    private var option: Hotkey!
+    private var presses = 0
+    private var down = false
+    private var peeking = false
     private var bag = Set<AnyCancellable>()
 
     static func main() {
@@ -29,9 +35,11 @@ final class Delegate: NSObject, NSApplicationDelegate {
         stage.addSubview(view)
         panel.contentView = stage
         stretch()
-        panel.setFrameUsingName("Desks")
-        panel.setFrameAutosaveName("Desks")
-        panel.setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - Style.header, width: 300, height: Style.header), display: false)
+        if let top = saved() {
+            panel.setFrame(NSRect(x: top.x, y: top.y - Style.header, width: 300, height: Style.header), display: false)
+        } else {
+            panel.setFrameOrigin(NSPoint(x: corner().x - panel.frame.width, y: corner().y - panel.frame.height))
+        }
         panel.orderFrontRegardless()
         if !Access.trusted { Access.prompt() }
 
@@ -40,6 +48,8 @@ final class Delegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "Show or Hide Tasks", action: #selector(toggle), keyEquivalent: "")
         menu.addItem(withTitle: "Snap to Top Right", action: #selector(anchor), keyEquivalent: "")
+        menu.addItem(withTitle: "Tuck Away or Bring Back (Double-Tap ⌃)", action: #selector(slide), keyEquivalent: "")
+        menu.addItem(withTitle: "Collapse or Expand (Double-Tap ⌥)", action: #selector(shrink), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Desks", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -54,12 +64,36 @@ final class Delegate: NSObject, NSApplicationDelegate {
             .store(in: &bag)
 
         store.snap = { [weak self] in self?.anchor() }
+        away = Away(panel: panel)
         for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
             NotificationCenter.default.publisher(for: name, object: panel)
-                .sink { [weak self] _ in self?.track() }
+                .sink { [weak self] _ in
+                    guard let self, !self.away.moved() else { return }
+                    self.track()
+                    UserDefaults.standard.set(NSStringFromPoint(NSPoint(x: self.panel.frame.minX, y: self.panel.frame.maxY)), forKey: "top")
+                }
                 .store(in: &bag)
         }
         track()
+
+        hotkey = Hotkey(.control)
+        hotkey.pressed = { [weak self] in self?.press() }
+        hotkey.released = { [weak self] in self?.lift() }
+        hotkey.cancelled = { [weak self] in self?.drop() }
+        option = Hotkey(.option)
+        option.released = { [weak self] in self?.fold() }
+    }
+
+    private func saved() -> NSPoint? {
+        let defaults = UserDefaults.standard
+        var top = defaults.string(forKey: "top").map(NSPointFromString)
+        if top == nil {
+            let values = (defaults.string(forKey: "NSWindow Frame Desks") ?? "").split(separator: " ").compactMap { Double($0) }
+            if values.count >= 4 { top = NSPoint(x: values[0], y: values[1] + values[3]) }
+        }
+        guard let top else { return nil }
+        let frame = NSRect(x: top.x, y: top.y - Style.header, width: 300, height: Style.header)
+        return NSScreen.screens.contains { $0.frame.insetBy(dx: -2, dy: -2).contains(frame) } ? top : nil
     }
 
     private func corner() -> NSPoint {
@@ -104,6 +138,59 @@ final class Delegate: NSObject, NSApplicationDelegate {
         frame.origin.y = frame.maxY - height
         frame.size.height = height
         panel.setFrame(frame, display: false)
+    }
+
+    private func press() {
+        guard !down else { return }
+        down = true
+        presses += 1
+        let press = presses
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.down, self.presses == press else { return }
+                self.peeking = true
+                self.away.peek(true)
+            }
+        }
+    }
+
+    private func lift() {
+        down = false
+        if peeking {
+            peeking = false
+            away.peek(false)
+        } else {
+            slide()
+        }
+    }
+
+    private func fold() {
+        let mouse = NSEvent.mouseLocation
+        if panel.isVisible, !store.collapsed, panel.frame.contains(mouse),
+           store.fold(at: CGPoint(x: mouse.x - panel.frame.minX, y: panel.frame.maxY - mouse.y)) {
+            return
+        }
+        shrink()
+    }
+
+    @objc private func shrink() {
+        store.collapsed.toggle()
+    }
+
+    private func drop() {
+        down = false
+        if peeking {
+            peeking = false
+            away.peek(false)
+        }
+    }
+
+    @objc private func slide() {
+        guard panel.isVisible else {
+            panel.orderFrontRegardless()
+            return
+        }
+        away.toggle()
     }
 
     @objc private func toggle() {

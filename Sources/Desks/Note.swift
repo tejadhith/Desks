@@ -22,19 +22,21 @@ struct Note: View {
         .fixedSize(horizontal: false, vertical: true)
         .coordinateSpace(name: Style.space)
         .overlay(alignment: .topLeading) {
-            if let window = store.carrying {
-                Text(window.title.isEmpty ? window.app : window.title)
-                    .font(.grotesk(11, .medium))
-                    .lineLimit(1)
-                    .frame(maxWidth: 180)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .foregroundStyle(Color.paper)
-                    .background(Color.ink, in: RoundedRectangle(cornerRadius: 4))
-                    .fixedSize()
-                    .position(x: store.pointer.x, y: store.pointer.y - 14)
-                    .allowsHitTesting(false)
+            ZStack(alignment: .topLeading) {
+                if let label = store.carrying.map({ $0.title.isEmpty ? $0.app : $0.title }) {
+                    Text(label)
+                        .font(.grotesk(11, .medium))
+                        .lineLimit(1)
+                        .frame(maxWidth: 180)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .foregroundStyle(Color.paper)
+                        .background(Color.ink, in: RoundedRectangle(cornerRadius: 4))
+                        .fixedSize()
+                        .position(x: store.pointer.x, y: store.pointer.y - 14)
+                }
             }
+            .allowsHitTesting(false)
         }
         .background(Color.paper)
         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -51,8 +53,11 @@ struct Note: View {
             if draft != nil { composer }
             ForEach($store.items) { $item in
                 if store.started(item) {
-                    Card(item: $item)
-                    line
+                    VStack(spacing: 0) {
+                        Card(item: $item)
+                        line
+                    }
+                    .slide(item.id, in: store)
                 }
             }
             if store.items.isEmpty && draft == nil { empty }
@@ -69,8 +74,11 @@ struct Note: View {
                 if !folded {
                     ForEach($store.items) { $item in
                         if !store.started(item) {
-                            line
-                            Card(item: $item)
+                            VStack(spacing: 0) {
+                                line
+                                Card(item: $item)
+                            }
+                            .slide(item.id, in: store)
                         }
                     }
                 }
@@ -123,7 +131,7 @@ struct Note: View {
         .buttonStyle(Glyph())
         .padding(.horizontal, 12)
         .frame(height: Style.header)
-        .background(Handle())
+        .background(Handle { store.collapsed.toggle() })
         .background(Color.deep)
     }
 
@@ -162,7 +170,7 @@ struct Note: View {
     private var upcoming: some View {
         HStack(spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) { folded.toggle() }
+                withAnimation(Style.fold(folded)) { folded.toggle() }
             } label: {
                 HStack(spacing: 8) {
                     Text("Upcoming")
@@ -178,7 +186,7 @@ struct Note: View {
             }
             .buttonStyle(.plain)
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) { folded.toggle() }
+                withAnimation(Style.fold(folded)) { folded.toggle() }
             } label: {
                 Image(systemName: folded ? "chevron.down" : "chevron.up")
             }
@@ -306,7 +314,7 @@ private struct Loose: View {
                     .help("Turn this desktop into a task")
                 }
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { folded.toggle() }
+                    withAnimation(Style.fold(folded)) { folded.toggle() }
                 } label: {
                     Image(systemName: folded ? "chevron.down" : "chevron.up")
                 }

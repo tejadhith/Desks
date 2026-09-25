@@ -5,6 +5,8 @@ struct Card: View {
     @Binding var item: Item
     @State private var hover = false
     @State private var entry = ""
+    @GestureState private var dragging = false
+    @State private var click: Task<Void, Never>?
     @FocusState private var naming: Bool
     @FocusState private var field: Field?
 
@@ -17,6 +19,7 @@ struct Card: View {
     private var active: Bool { space?.id == store.current }
     private var targeted: Bool { space != nil && store.hovered == space?.id }
     private var windows: [Sky.Window] { space.map(store.windows(on:)) ?? [] }
+    private var lifted: Bool { store.lift?.id == item.id }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -36,17 +39,10 @@ struct Card: View {
                             DispatchQueue.main.async { naming = true }
                         }
                 } else {
-                    Button {
-                        if space == nil {
-                            withAnimation(.easeInOut(duration: 0.15)) { item.folded.toggle() }
-                        } else {
-                            store.open(item)
-                        }
-                    } label: {
+                    Button(action: tap) {
                         HStack(spacing: 8) {
                             Badge(label: space?.number.map(String.init) ?? "–", active: active)
-                            Text(item.title.isEmpty ? "Untitled" : item.title)
-                                .lineLimit(1)
+                            Ticker(text: item.title.isEmpty ? "Untitled" : item.title, rolling: hover && store.lift == nil)
                                 .opacity(item.title.isEmpty ? 0.7 : 1)
                             if item.folded {
                                 tally
@@ -57,7 +53,15 @@ struct Card: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(space == nil ? "Show details" : "Switch to this task's desktop")
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 6, coordinateSpace: .named(Style.space))
+                            .updating($dragging) { _, state, _ in state = true }
+                            .onChanged { store.lift(item, by: $0.translation.height) }
+                    )
+                    .onChange(of: dragging) { _, now in
+                        if !now { store.drop() }
+                    }
+                    .help(space == nil ? "Show details · double-click to rename · drag to reorder" : "Switch to this task's desktop · double-click to rename · drag to reorder")
                 }
                 Group {
                     if space == nil {
@@ -87,7 +91,7 @@ struct Card: View {
                 .buttonStyle(Glyph())
                 .opacity(hover || active ? 1 : 0.35)
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { item.folded.toggle() }
+                    withAnimation(Style.fold(item.folded)) { item.folded.toggle() }
                 } label: {
                     Image(systemName: item.folded ? "chevron.down" : "chevron.up")
                 }
@@ -103,10 +107,13 @@ struct Card: View {
         .padding(.horizontal, 12)
         .padding(.vertical, item.folded ? 6 : 10)
         .background(targeted ? Color.mist : active ? Color.wash : .clear)
+        .background(lifted ? Color.paper : .clear)
+        .shadow(color: .black.opacity(lifted ? 0.3 : 0), radius: 8, y: 2)
         .overlay {
             if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
         }
         .zone(space?.id, in: store)
+        .card(item.id, in: store)
         .onHover { hover = $0 }
         .contextMenu {
             if space == nil {
@@ -129,6 +136,25 @@ struct Card: View {
             }
             Divider()
             Button("Delete Task", role: .destructive) { store.remove(item) }
+        }
+    }
+
+    private func tap() {
+        if let click {
+            click.cancel()
+            self.click = nil
+            store.editing = item.id
+            return
+        }
+        click = Task {
+            try? await Task.sleep(for: .seconds(min(NSEvent.doubleClickInterval, 0.35)))
+            guard !Task.isCancelled else { return }
+            click = nil
+            if space == nil {
+                withAnimation(Style.fold(item.folded)) { item.folded.toggle() }
+            } else {
+                store.open(item)
+            }
         }
     }
 

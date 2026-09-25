@@ -4,9 +4,30 @@ enum Style {
     static let header: CGFloat = 44
     static let indent: CGFloat = 34
     static let space = "note"
+
+    static func fold(_ folded: Bool) -> Animation? {
+        folded ? nil : .easeInOut(duration: 0.15)
+    }
 }
 
 extension View {
+    func slide(_ id: UUID, in store: Store) -> some View {
+        let lifted = store.lift?.id == id
+        return offset(y: store.offset(for: id))
+            .zIndex(lifted ? 1 : 0)
+            .animation(lifted ? nil : .easeInOut(duration: 0.18), value: store.lift?.slot)
+    }
+
+    func card(_ id: UUID, in store: Store) -> some View {
+        background(GeometryReader { proxy in
+            let frame = proxy.frame(in: .named(Style.space))
+            Color.clear
+                .onAppear { store.place(card: id, frame) }
+                .onChange(of: frame) { _, frame in store.place(card: id, frame) }
+                .onDisappear { store.place(card: id, nil) }
+        })
+    }
+
     func zone(_ id: UInt64?, in store: Store) -> some View {
         background(GeometryReader { proxy in
             let frame = proxy.frame(in: .named(Style.space))
@@ -117,5 +138,54 @@ struct Badge: View {
             .foregroundStyle(active ? Color.paper : Color.ink)
             .background(active ? Color.ink : Color.wash, in: RoundedRectangle(cornerRadius: 4))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(active ? Color.clear : Color.mist))
+    }
+}
+
+struct Ticker: View {
+    let text: String
+    let rolling: Bool
+    @State private var room: CGFloat = 0
+    @State private var full: CGFloat = 0
+    @State private var shift: CGFloat = 0
+    @State private var moving = false
+
+    var body: some View {
+        Text(text)
+            .lineLimit(1)
+            .opacity(moving ? 0 : 1)
+            .background(GeometryReader { proxy in
+                Color.clear
+                    .onAppear { room = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in room = width }
+            })
+            .overlay(alignment: .leading) {
+                Text(text)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .background(GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { full = proxy.size.width }
+                            .onChange(of: proxy.size.width) { _, width in full = width }
+                    })
+                    .offset(x: shift)
+                    .opacity(moving ? 1 : 0)
+            }
+            .clipped()
+            .task(id: rolling) {
+                moving = false
+                shift = 0
+                let spare = full - room
+                guard rolling, spare > 1 else { return }
+                try? await Task.sleep(for: .milliseconds(500))
+                let duration = Double(spare / 40)
+                while !Task.isCancelled {
+                    moving = true
+                    withAnimation(.linear(duration: duration)) { shift = -spare }
+                    try? await Task.sleep(for: .seconds(duration + 1.2))
+                    guard !Task.isCancelled else { break }
+                    withAnimation(.linear(duration: duration)) { shift = 0 }
+                    try? await Task.sleep(for: .seconds(duration + 1.2))
+                }
+            }
     }
 }

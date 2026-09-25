@@ -1,4 +1,13 @@
 import AppKit
+import SwiftUI
+
+struct Lift: Equatable {
+    let id: UUID
+    let order: [UUID]
+    let frames: [UUID: CGRect]
+    var shift: CGFloat = 0
+    var slot: Int
+}
 
 @MainActor
 final class Store: ObservableObject {
@@ -17,6 +26,8 @@ final class Store: ObservableObject {
     @Published var limit: CGFloat = 600
     @Published private(set) var carrying: Sky.Window?
     @Published private(set) var pointer: CGPoint = .zero
+    @Published private(set) var lift: Lift?
+    private var cards: [UUID: CGRect] = [:]
     @Published private(set) var hovered: UInt64?
     @Published private(set) var front: UInt32?
     @Published private(set) var starting: UUID?
@@ -343,11 +354,66 @@ final class Store: ObservableObject {
         zones[id] = frame
     }
 
+    func place(card id: UUID, _ frame: CGRect?) {
+        cards[id] = frame
+    }
+
+    func lift(_ item: Item, by translation: CGFloat) {
+        if lift?.id != item.id {
+            let group = started(item)
+            let order = items.filter { started($0) == group }.map(\.id)
+            lift = Lift(id: item.id, order: order, frames: cards.filter { order.contains($0.key) }, slot: order.firstIndex(of: item.id) ?? 0)
+        }
+        guard var lift, let frame = lift.frames[item.id],
+              let first = lift.order.first.flatMap({ lift.frames[$0] }),
+              let last = lift.order.last.flatMap({ lift.frames[$0] })
+        else { return }
+        lift.shift = min(max(translation, first.minY - frame.minY), last.maxY - frame.maxY)
+        let center = frame.midY + lift.shift
+        lift.slot = lift.order.filter { $0 != item.id }.filter { (lift.frames[$0]?.midY ?? 0) < center }.count
+        if lift != self.lift { self.lift = lift }
+    }
+
+    func offset(for id: UUID) -> CGFloat {
+        guard let lift, let from = lift.order.firstIndex(of: lift.id), let index = lift.order.firstIndex(of: id),
+              let height = lift.frames[lift.id]?.height
+        else { return 0 }
+        if id == lift.id { return lift.shift }
+        if from < lift.slot, index > from, index <= lift.slot { return -(height + 1) }
+        if from > lift.slot, index >= lift.slot, index < from { return height + 1 }
+        return 0
+    }
+
+    func drop() {
+        guard let lift else { return }
+        var order = lift.order.filter { $0 != lift.id }
+        order.insert(lift.id, at: min(lift.slot, order.count))
+        var queue = order.compactMap { id in items.first { $0.id == id } }[...]
+        let next = items.map { lift.order.contains($0.id) && !queue.isEmpty ? queue.removeFirst() : $0 }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if next.map(\.id) != items.map(\.id) { items = next }
+            self.lift = nil
+        }
+    }
+
     func track(_ window: Sky.Window, at point: CGPoint) {
         if carrying?.id != window.id { carrying = window }
         pointer = point
         let hit = zone(at: point)
         if hovered != hit { hovered = hit }
+    }
+
+    func fold(at point: CGPoint) -> Bool {
+        if let id = cards.filter({ $0.value.contains(point) }).min(by: { $0.value.height < $1.value.height })?.key,
+           let index = items.firstIndex(where: { $0.id == id }) {
+            withAnimation(Style.fold(items[index].folded)) { items[index].folded.toggle() }
+            return true
+        }
+        guard let id = zone(at: point), let space = desktops.first(where: { $0.id == id }) else { return false }
+        let key = "folded." + (space == home ? "home" : space.uuid)
+        let folded = UserDefaults.standard.bool(forKey: key)
+        withAnimation(Style.fold(folded)) { UserDefaults.standard.set(!folded, forKey: key) }
+        return true
     }
 
     private func zone(at point: CGPoint) -> UInt64? {
