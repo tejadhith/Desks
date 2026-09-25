@@ -4,6 +4,8 @@ A floating task panel for macOS where every task gets its own real desktop.
 
 Keep a short list of what you are working on in the top-right corner of the screen. Each task owns a Mission Control desktop, so switching tasks switches desktops, and each task shows the windows that live on it.
 
+![Desks switching tasks, adding to-dos, creating a desktop, moving windows between tasks, and sending a task to another screen](demo.gif)
+
 ## Features
 
 - **A desktop per task.** Creating a task adds a new desktop and takes you there. Desktop 1 stays home for unsorted windows.
