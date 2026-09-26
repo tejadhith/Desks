@@ -41,6 +41,8 @@ final class Store: ObservableObject {
     @Published private(set) var beats: [String: Beat] = [:]
     @Published private(set) var named: [String: String] = [:]
     @Published private(set) var hidden: Set<String> = []
+    @Published private(set) var active: [String: Date] = [:]
+    @Published private(set) var running: Set<Agent> = []
     @Published private(set) var held: Chat?
     @Published private(set) var aim: Aim?
     private var zones: [UInt64: CGRect] = [:]
@@ -111,12 +113,20 @@ final class Store: ObservableObject {
     }
 
     func inbox(_ agent: Agent) -> [Chat] {
+        guard running.contains(agent) else { return [] }
         let cutoff = Date().addingTimeInterval(-86400)
         let linked = linked
         return beats.values
-            .filter { $0.agent == agent && $0.time > cutoff && !linked.contains($0.id) && !hidden.contains($0.id) }
+            .filter { $0.agent == agent && !linked.contains($0.id) && !hidden.contains($0.id) }
+            .map { (beat: $0, time: latest($0)) }
+            .filter { $0.time > cutoff }
             .sorted { $0.time > $1.time }
-            .map { Chat(agent: $0.agent, session: $0.session, title: named[$0.id] ?? "") }
+            .map { Chat(agent: $0.beat.agent, session: $0.beat.session, title: named[$0.beat.id] ?? "") }
+    }
+
+    private func latest(_ beat: Beat) -> Date {
+        let busy = beat.status == .running || beat.status == .waiting
+        return max(active[beat.id] ?? .distantPast, busy ? beat.time : .distantPast)
     }
 
     func chats(of item: Item) -> [Chat] {
@@ -161,11 +171,20 @@ final class Store: ObservableObject {
         starting = id
         run {
             defer { self.starting = nil }
-            guard let made = await self.provision(on: display) else { return }
+            guard let made = await self.reuse(on: display) else { return }
             self.link(id, to: made)
             try? await Task.sleep(for: .milliseconds(700))
             await self.go(to: made)
         }
+    }
+
+    private func reuse(on display: String) async -> Sky.Space? {
+        let taken = Set(items.flatMap { [$0.space, $0.origin].compactMap { $0 } })
+        let desktops = Sky.spaces().filter { $0.number != nil }
+        if let spare = desktops.dropFirst().first(where: { $0.display == display && !taken.contains($0.uuid) && Sky.windows(in: [$0.id]).isEmpty }) {
+            return spare
+        }
+        return await provision(on: display)
     }
 
     private func provision(on display: String) async -> Sky.Space? {
@@ -235,7 +254,7 @@ final class Store: ObservableObject {
             }
             run {
                 defer { self.lost.remove(id) }
-                guard let made = await self.provision(on: display) else { return }
+                guard let made = await self.reuse(on: display) else { return }
                 self.link(id, to: made)
                 if let index = self.items.firstIndex(where: { $0.id == id }) { self.items[index].origin = uuid }
                 try? await Task.sleep(for: .milliseconds(700))
@@ -275,6 +294,23 @@ final class Store: ObservableObject {
         run { await self.discard(space) }
     }
 
+    func remove(_ space: Sky.Space) {
+        guard space != home, !items.contains(where: { self.space(for: $0) == space }), ready() else { return }
+        guard desktops.contains(where: { $0.display == space.display && $0.id != space.id }) else {
+            tell("Desktop \(space.number ?? 0) is the only desktop on its screen, so it stays")
+            return
+        }
+        run { await self.discard(space) }
+    }
+
+    func postpone(_ item: Item) {
+        guard let space = space(for: item), ready(), let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].space = nil
+        items[index].origin = nil
+        guard desktops.contains(where: { $0.display == space.display && $0.id != space.id }) else { return }
+        run { await self.discard(space) }
+    }
+
     private func discard(_ space: Sky.Space) async {
         let desktops = Sky.spaces().filter { $0.number != nil }
         guard let space = desktops.first(where: { $0.id == space.id }) else { return }
@@ -298,7 +334,7 @@ final class Store: ObservableObject {
         let id = item.id
         let showing = Sky.visible().contains(space.id)
         run {
-            guard let made = await self.provision(on: display) else {
+            guard let made = await self.reuse(on: display) else {
                 self.tell("Couldn't make a desktop on that screen")
                 return
             }
@@ -759,6 +795,12 @@ final class Store: ObservableObject {
                 }
             })
         }
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.census() }
+            })
+        }
+        census()
         pulse = Task { [weak self] in
             while !Task.isCancelled {
                 self?.glance()
@@ -773,10 +815,16 @@ final class Store: ObservableObject {
         }
         sense = Task { [weak self] in
             while !Task.isCancelled {
+                self?.census()
                 await self?.listen()
                 try? await Task.sleep(for: .milliseconds(1500))
             }
         }
+    }
+
+    private func census() {
+        let now = Set(Agent.allCases.filter { $0.app != nil })
+        if now != running { running = now }
     }
 
     private func listen() async {
@@ -799,20 +847,24 @@ final class Store: ObservableObject {
         }.value
         var named = self.named
         var hidden = self.hidden
+        var active = self.active
         var titles: [String: String] = [:]
         for result in results {
             let title = result.found?.title ?? ""
             if !title.isEmpty { titles[result.id] = title }
-            let fallback = result.cwd.isEmpty ? "Untitled" : URL(fileURLWithPath: result.cwd).lastPathComponent
+            let cached = items.lazy.flatMap(\.chats).first { $0.id == result.id }?.title ?? ""
+            let fallback = !cached.isEmpty ? cached : result.cwd.isEmpty ? "Untitled" : URL(fileURLWithPath: result.cwd).lastPathComponent
             named[result.id] = title.isEmpty ? (named[result.id] ?? fallback) : title
-            if result.found?.hidden == true || (result.found == nil && result.agent == .codex) {
+            if result.found?.hidden ?? true {
                 hidden.insert(result.id)
             } else {
                 hidden.remove(result.id)
             }
+            active[result.id] = result.found?.active
         }
         if named != self.named { self.named = named }
         if hidden != self.hidden { self.hidden = hidden }
+        if active != self.active { self.active = active }
         let next = items.map { item in
             var item = item
             for index in item.chats.indices {

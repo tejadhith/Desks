@@ -47,7 +47,8 @@ final class Delegate: NSObject, NSApplicationDelegate {
         if Hooks.connected { Task.detached { Hooks.install() } }
 
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        status.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Desks")
+        status.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Desks")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 16.5, weight: .regular))
         let menu = NSMenu()
         menu.addItem(withTitle: "Show or Hide Tasks", action: #selector(toggle), keyEquivalent: "")
         menu.addItem(withTitle: "Snap to Top Right", action: #selector(anchor), keyEquivalent: "")

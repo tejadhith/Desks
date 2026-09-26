@@ -10,34 +10,49 @@ struct Talk: View {
     private var status: Status? { store.beats[chat.id]?.status }
 
     var body: some View {
-        Button {
-            store.open(chat, in: item)
-        } label: {
-            HStack(spacing: 6) {
-                Image(agent: chat.agent)
-                    .resizable()
-                    .frame(width: 14, height: 14)
-                Text(title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-                if let status { Dot(status: status) }
+        HStack(spacing: 6) {
+            Button {
+                store.open(chat, in: item)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(agent: chat.agent)
+                        .resizable()
+                        .frame(width: 14, height: 14)
+                    Text(title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    if let status { Dot(status: status) }
+                }
+                .contentShape(Rectangle())
             }
-            .font(.grotesk(11))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Color.ink.opacity(hover ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 4))
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 4, coordinateSpace: .named(Style.space))
+                    .onChanged { store.track(chat, at: $0.location) }
+                    .onEnded { store.release(chat, at: $0.location) }
+            )
+            .help("\(chat.agent.name) · \(title)\(status.map { " · " + $0.label } ?? "") · click to open\(item == nil ? " where \(chat.agent.name) is" : " on this task's desktop") · drag to a task")
+            if item != nil {
+                Button {
+                    store.detach(chat)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 14, height: 14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .opacity(hover ? 0.7 : 0)
+                .help("Unlink from this task")
+            }
         }
-        .buttonStyle(.plain)
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 4, coordinateSpace: .named(Style.space))
-                .onChanged { store.track(chat, at: $0.location) }
-                .onEnded { store.release(chat, at: $0.location) }
-        )
+        .font(.grotesk(11))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Color.ink.opacity(hover ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 4))
         .opacity(store.held?.id == chat.id ? 0.4 : 1)
         .onHover { hover = $0 }
-        .help("\(chat.agent.name) · \(title)\(status.map { " · " + $0.label } ?? "") · click to open\(item == nil ? " where \(chat.agent.name) is" : " on this task's desktop") · drag to a task")
         .contextMenu {
             Menu("Move to") {
                 ForEach(store.homes(for: chat)) { home in
@@ -46,7 +61,7 @@ struct Talk: View {
             }
             .disabled(store.homes(for: chat).isEmpty)
             if item != nil {
-                Button("Move to Unsorted") { store.detach(chat) }
+                Button("Unlink") { store.detach(chat) }
             }
         }
     }
@@ -74,7 +89,7 @@ struct Inbox: View {
                     HStack(spacing: 8) {
                         Image(agent: agent)
                             .resizable()
-                            .frame(width: 16, height: 16)
+                            .frame(width: 22, height: 22)
                             .frame(width: 26, height: 18)
                         Text(folded ? agent.name : "\(agent.name) · unsorted")
                             .font(.grotesk(12, .medium))

@@ -23,7 +23,7 @@ enum Agent: String, Codable, CaseIterable {
     }
 
     var app: NSRunningApplication? {
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first { !$0.isTerminated }
     }
 
     var icon: NSImage? {
@@ -43,7 +43,7 @@ enum Agent: String, Codable, CaseIterable {
         }
     }
 
-    func look(_ session: String) -> (title: String, hidden: Bool)? {
+    func look(_ session: String) -> (title: String, hidden: Bool, active: Date?)? {
         let home = FileManager.default.homeDirectoryForCurrentUser
         switch self {
         case .claude:
@@ -56,28 +56,39 @@ enum Agent: String, Codable, CaseIterable {
                         guard let data = try? Data(contentsOf: file),
                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                         else { continue }
-                        return (json["title"] as? String ?? "", json["isArchived"] as? Bool ?? false)
+                        let active = (json["lastActivityAt"] as? NSNumber ?? json["createdAt"] as? NSNumber).flatMap { Self.date($0.stringValue) }
+                        return (json["title"] as? String ?? "", json["isArchived"] as? Bool ?? false, active)
                     }
                 }
             }
             return nil
         case .codex:
             let path = home.appendingPathComponent(".codex/state_5.sqlite").path
-            guard let row = Self.row(path, "select coalesce(nullif(name, ''), title), archived, source from threads where id = ?", session) else { return nil }
+            guard let row = Self.row(path, "select coalesce(nullif(name, ''), title), archived, source, coalesce(recency_at, updated_at) from threads where id = ?", session) else { return nil }
             let source = row[2] ?? ""
-            return (row[0] ?? "", row[1] == "1" || source.hasPrefix("{"))
+            return (row[0] ?? "", row[1] == "1" || source.hasPrefix("{"), Self.date(row[3]))
         case .devin:
             let path = home.appendingPathComponent(".local/share/devin/cli/sessions.db").path
-            guard let row = Self.row(path, "select title, hidden from sessions where id = ?", session) else { return nil }
-            return (row[0] ?? "", row[1] == "1")
+            guard let row = Self.row(path, "select title, hidden, coalesce((select max(created_at) from message_nodes where session_id = sessions.id), created_at) from sessions where id = ?", session) else { return nil }
+            let state = home.appendingPathComponent("Library/Application Support/Devin/User/globalStorage/state.vscdb").path
+            let archived = (Self.row(state, "select value from ItemTable where key = ?", "windsurf.acp.session/archivedSessions")?.first ?? nil)
+                .flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String] }?
+                .contains("acp/devin-cli/" + session) ?? false
+            return (row[0] ?? "", row[1] == "1" || archived, Self.date(row[2]))
         case .code:
             let path = home.appendingPathComponent("Library/Application Support/Code/User/globalStorage/agent-host.db").path
-            guard let row = Self.row(path, "select payload from sessions_v2 where session_uri = ?", "copilotcli:/" + Self.peer(session)),
+            guard let row = Self.row(path, "select payload, modified_time from sessions_v2 where session_uri = ?", "copilotcli:/" + Self.peer(session)),
                   let data = row[0]?.data(using: .utf8),
                   let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["data"] as? [String: Any]
             else { return nil }
-            return (json["summary"] as? String ?? "", json["isArchived"] as? Bool ?? false)
+            return (json["summary"] as? String ?? "", json["isArchived"] as? Bool ?? false, Self.date(row[1]))
         }
+    }
+
+    private static func date(_ text: String?) -> Date? {
+        guard let value = text.flatMap(Double.init), value > 0 else { return nil }
+        return Date(timeIntervalSince1970: value > 1e11 ? value / 1000 : value)
     }
 
     private static func peer(_ session: String) -> String {

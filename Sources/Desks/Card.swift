@@ -120,7 +120,7 @@ struct Card: View {
         .onHover { hover = $0 }
         .contextMenu {
             if space == nil {
-                Button("Start on New Desktop") { store.create(for: item) }
+                Button("Start") { store.create(for: item) }
                     .disabled(store.busy)
             } else {
                 Button("Switch to Task") { store.open(item) }
@@ -136,6 +136,8 @@ struct Card: View {
                     Button("Move to \(screen.name)") { store.relocate(item, to: screen.id) }
                         .disabled(store.busy)
                 }
+                Button("Move to Upcoming") { store.postpone(item) }
+                    .disabled(store.busy)
             }
             Divider()
             Button("Delete Task", role: .destructive) { store.remove(item) }

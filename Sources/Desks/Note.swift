@@ -68,7 +68,7 @@ struct Note: View {
             if let home = store.home {
                 Loose(space: home, home: true)
             }
-            ForEach(Agent.allCases.filter { !store.inbox($0).isEmpty || store.held?.agent == $0 }, id: \.self) { agent in
+            ForEach(Agent.allCases.filter { !store.inbox($0).isEmpty || (store.held?.agent == $0 && store.running.contains($0)) }, id: \.self) { agent in
                 line
                 Inbox(agent: agent)
             }
@@ -340,5 +340,11 @@ private struct Loose: View {
             if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
         }
         .zone(space.id, in: store)
+        .contextMenu {
+            if !home {
+                Button("Remove Desktop", role: .destructive) { store.remove(space) }
+                    .disabled(store.busy)
+            }
+        }
     }
 }
