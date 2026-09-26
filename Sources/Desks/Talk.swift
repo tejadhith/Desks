@@ -126,25 +126,39 @@ struct Dot: View {
         Group {
             switch status {
             case .running:
-                ProgressView()
-                    .controlSize(.mini)
-                    .tint(Color.ink)
-                    .scaleEffect(0.7)
+                Spin()
             case .waiting:
                 Image(systemName: "exclamationmark.circle.fill")
                     .foregroundStyle(Color.amber)
             case .done:
                 Image(systemName: "checkmark.circle")
-                    .opacity(0.8)
             case .idle, .ended:
-                Image(systemName: "circle")
-                    .opacity(0.4)
+                Circle()
+                    .stroke(Color.ink.opacity(0.3), lineWidth: 1.6)
+                    .frame(width: 9, height: 9)
             }
         }
         .font(.system(size: 10, weight: .semibold))
         .frame(width: 14, height: 14)
         .help(status.label)
         .accessibilityHidden(true)
+    }
+}
+
+private struct Spin: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+            ZStack {
+                Circle()
+                    .stroke(Color.ink.opacity(0.3), lineWidth: 1.6)
+                Circle()
+                    .trim(from: 0, to: 0.3)
+                    .stroke(Color.ink, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    .rotationEffect(.degrees(turn * 360))
+            }
+            .frame(width: 9, height: 9)
+        }
     }
 }
 

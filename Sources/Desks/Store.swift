@@ -33,6 +33,8 @@ final class Store: ObservableObject {
     @Published private(set) var pointer: CGPoint = .zero
     @Published private(set) var lift: Lift?
     private var cards: [UUID: CGRect] = [:]
+    private var shelves: [UUID: CGRect] = [:]
+    private var owners: [String: UUID] = [:]
     @Published private(set) var hovered: UInt64?
     @Published private(set) var front: UInt32?
     @Published private(set) var starting: UUID?
@@ -49,6 +51,7 @@ final class Store: ObservableObject {
     private let url: URL
     private var titles: [UInt32: String] = [:]
     private var fronts: [UInt64: Sky.Window] = [:]
+    private var leads: [UInt64: UInt32] = [:]
     private var loop: Task<Void, Never>?
     private var pulse: Task<Void, Never>?
     private var sense: Task<Void, Never>?
@@ -403,17 +406,24 @@ final class Store: ObservableObject {
         }
     }
 
-    func send(_ window: Sky.Window, to space: Sky.Space) {
+    func send(_ window: Sky.Window, to space: Sky.Space, from frame: CGRect? = nil) {
         guard window.space != space.id, ready() else { return }
         let back = current
         let origin = spaces.first { $0.id == window.space }
         run {
-            if origin?.display == space.display, Bridge.move([window.id], to: space.id), await Carry.arrived(window.id, in: space.id) {
+            let shown = Sky.visible().contains(window.space)
+            let element = shown ? Access.element(of: window) : nil
+            let fit = origin.flatMap { Carry.fit(frame ?? Carry.bounds(window.id), from: $0.display, to: space.display) }
+            if shown { Access.lift(window) }
+            if Bridge.move([window.id], to: space.id), await Carry.arrived(window.id, in: space.id) {
+                if let element, let fit { Access.fit(element, to: fit) }
+                self.lead(window, on: space)
                 return
             }
-            if !Sky.visible().contains(window.space), let origin {
+            if !shown, let origin {
                 await self.go(to: origin)
                 try? await Task.sleep(for: .milliseconds(350))
+                Access.lift(window)
             }
             var moved = false
             if let origin, origin.display != space.display {
@@ -425,9 +435,20 @@ final class Store: ObservableObject {
             if Sky.current() != back, let previous = Sky.spaces().first(where: { $0.id == back }) {
                 await self.go(to: previous)
             }
-            if !moved {
+            if moved {
+                if let element, let fit { Access.fit(element, to: fit) }
+                self.lead(window, on: space)
+            } else {
                 self.tell("Couldn't move \(window.app). Drag it in Mission Control instead.")
             }
+        }
+    }
+
+    private func lead(_ window: Sky.Window, on space: Sky.Space) {
+        if Sky.visible().contains(space.id) {
+            Access.raise(window)
+        } else {
+            leads[space.id] = window.id
         }
     }
 
@@ -455,17 +476,34 @@ final class Store: ObservableObject {
         }
     }
 
-    func place(_ id: UInt64?, _ frame: CGRect?) {
-        guard let id else { return }
+    func place(_ id: UInt64?, _ frame: CGRect?, by token: UUID) {
+        guard let id, own("zone \(id)", frame, token) else { return }
         zones[id] = frame
     }
 
-    func place(card id: UUID, _ frame: CGRect?) {
+    func place(shelf id: UUID, _ frame: CGRect?, by token: UUID) {
+        guard own("shelf \(id)", frame, token) else { return }
+        shelves[id] = frame
+    }
+
+    func place(card id: UUID, _ frame: CGRect?, by token: UUID) {
+        guard own("card \(id)", frame, token) else { return }
         cards[id] = frame
     }
 
-    func place(inbox agent: Agent, _ frame: CGRect?) {
+    func place(inbox agent: Agent, _ frame: CGRect?, by token: UUID) {
+        guard own("inbox \(agent.rawValue)", frame, token) else { return }
         inboxes[agent] = frame
+    }
+
+    private func own(_ key: String, _ frame: CGRect?, _ token: UUID) -> Bool {
+        if frame != nil {
+            owners[key] = token
+            return true
+        }
+        guard owners[key] == token else { return false }
+        owners[key] = nil
+        return true
     }
 
     func track(_ chat: Chat, at point: CGPoint) {
@@ -507,8 +545,8 @@ final class Store: ObservableObject {
               let last = lift.order.last.flatMap({ lift.frames[$0] })
         else { return }
         lift.shift = min(max(translation, first.minY - frame.minY), last.maxY - frame.maxY)
-        let center = frame.midY + lift.shift
-        lift.slot = lift.order.filter { $0 != item.id }.filter { (lift.frames[$0]?.midY ?? 0) < center }.count
+        let edge = lift.shift > 0 ? frame.maxY + lift.shift : frame.minY + lift.shift
+        lift.slot = lift.order.filter { $0 != item.id }.filter { (lift.frames[$0]?.midY ?? 0) < edge }.count
         if lift != self.lift { self.lift = lift }
     }
 
@@ -541,7 +579,28 @@ final class Store: ObservableObject {
         if hovered != hit { hovered = hit }
     }
 
+    func hover(_ point: CGPoint?) {
+        let hit = point.flatMap(zone(at:))
+        if hovered != hit { hovered = hit }
+    }
+
+    func take(_ id: UInt32, at point: CGPoint, back frame: CGRect) {
+        let hit = zone(at: point)
+        hovered = nil
+        guard let hit, let space = spaces.first(where: { $0.id == hit }) else { return }
+        Task {
+            await refresh()
+            guard let window = windows.first(where: { $0.id == id }), window.space != hit else { return }
+            send(window, to: space, from: frame)
+        }
+    }
+
     func fold(at point: CGPoint) -> Bool {
+        if let id = shelves.first(where: { $0.value.contains(point) })?.key,
+           let index = items.firstIndex(where: { $0.id == id }), !items[index].todos.isEmpty {
+            withAnimation(Style.fold(items[index].shelved)) { items[index].shelved.toggle() }
+            return true
+        }
         if let id = cards.filter({ $0.value.contains(point) }).min(by: { $0.value.height < $1.value.height })?.key,
            let index = items.firstIndex(where: { $0.id == id }) {
             withAnimation(Style.fold(items[index].folded)) { items[index].folded.toggle() }
@@ -591,9 +650,14 @@ final class Store: ObservableObject {
             let titles = trusted ? Access.titles(for: Set(windows.map(\.pid))) : [:]
             return (windows, titles)
         }.value
+        leads = leads.filter { lead in found.contains { $0.id == lead.value && $0.space == lead.key } }
         var fronts: [UInt64: Sky.Window] = [:]
         for window in found where fronts[window.space] == nil { fronts[window.space] = window }
+        for (space, id) in leads { fronts[space] = found.first { $0.id == id } }
         self.fronts = fronts
+        if let id = leads.removeValue(forKey: current), let window = found.first(where: { $0.id == id }) {
+            Access.raise(window)
+        }
         let live = Set(found.map(\.id))
         titles.merge(named) { $1 }
         titles = titles.filter { live.contains($0.key) }

@@ -11,6 +11,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private var agents: NSMenuItem!
     private var hosting: NSView!
     private var away: Away!
+    private var grab: Grab!
     private var hotkey: Hotkey!
     private var option: Hotkey!
     private var presses = 0
@@ -70,6 +71,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
 
         store.snap = { [weak self] in self?.anchor() }
         away = Away(panel: panel)
+        grab = Grab(panel: panel, store: store)
         for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
             NotificationCenter.default.publisher(for: name, object: panel)
                 .sink { [weak self] _ in

@@ -11,6 +11,14 @@ enum Style {
 }
 
 extension View {
+    func wrap(_ text: String, lines: Int? = nil) -> some View {
+        Text(text.isEmpty ? " " : text)
+            .lineLimit(lines)
+            .hidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .topLeading) { self }
+    }
+
     func slide(_ id: UUID, in store: Store) -> some View {
         let lifted = store.lift?.id == id
         return offset(y: store.offset(for: id))
@@ -18,37 +26,39 @@ extension View {
             .animation(lifted ? nil : .easeInOut(duration: 0.18), value: store.lift?.slot)
     }
 
+    func shelf(_ id: UUID, in store: Store) -> some View {
+        modifier(Spot(key: id) { store.place(shelf: $0, $1, by: $2) })
+    }
+
     func card(_ id: UUID, in store: Store) -> some View {
-        background(GeometryReader { proxy in
-            let frame = proxy.frame(in: .named(Style.space))
-            Color.clear
-                .onAppear { store.place(card: id, frame) }
-                .onChange(of: frame) { _, frame in store.place(card: id, frame) }
-                .onDisappear { store.place(card: id, nil) }
-        })
+        modifier(Spot(key: id) { store.place(card: $0, $1, by: $2) })
     }
 
     func inbox(_ agent: Agent, in store: Store) -> some View {
-        background(GeometryReader { proxy in
-            let frame = proxy.frame(in: .named(Style.space))
-            Color.clear
-                .onAppear { store.place(inbox: agent, frame) }
-                .onChange(of: frame) { _, frame in store.place(inbox: agent, frame) }
-                .onDisappear { store.place(inbox: agent, nil) }
-        })
+        modifier(Spot(key: agent) { store.place(inbox: $0, $1, by: $2) })
     }
 
     func zone(_ id: UInt64?, in store: Store) -> some View {
-        background(GeometryReader { proxy in
+        modifier(Spot(key: id) { store.place($0, $1, by: $2) })
+    }
+}
+
+private struct Spot<Key: Hashable>: ViewModifier {
+    let key: Key
+    let place: (Key, CGRect?, UUID) -> Void
+    @State private var token = UUID()
+
+    func body(content: Content) -> some View {
+        content.background(GeometryReader { proxy in
             let frame = proxy.frame(in: .named(Style.space))
             Color.clear
-                .onAppear { store.place(id, frame) }
-                .onChange(of: frame) { _, frame in store.place(id, frame) }
-                .onChange(of: id) { old, new in
-                    store.place(old, nil)
-                    store.place(new, frame)
+                .onAppear { place(key, frame, token) }
+                .onChange(of: frame) { _, frame in place(key, frame, token) }
+                .onChange(of: key) { old, new in
+                    place(old, nil, token)
+                    place(new, frame, token)
                 }
-                .onDisappear { store.place(id, nil) }
+                .onDisappear { place(key, nil, token) }
         })
     }
 }
@@ -159,6 +169,7 @@ struct Ticker: View {
     @State private var full: CGFloat = 0
     @State private var shift: CGFloat = 0
     @State private var moving = false
+    private static let gap: CGFloat = 32
 
     var body: some View {
         Text(text)
@@ -170,32 +181,37 @@ struct Ticker: View {
                     .onChange(of: proxy.size.width) { _, width in room = width }
             })
             .overlay(alignment: .leading) {
-                Text(text)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .background(GeometryReader { proxy in
-                        Color.clear
-                            .onAppear { full = proxy.size.width }
-                            .onChange(of: proxy.size.width) { _, width in full = width }
-                    })
-                    .offset(x: shift)
+                HStack(spacing: Self.gap) {
+                    Text(text)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .background(GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { full = proxy.size.width }
+                                .onChange(of: proxy.size.width) { _, width in full = width }
+                        })
+                    Text(text)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                .offset(x: shift)
                     .opacity(moving ? 1 : 0)
             }
             .clipped()
             .task(id: rolling) {
                 moving = false
                 shift = 0
-                let spare = full - room
-                guard rolling, spare > 1 else { return }
+                guard rolling, full - room > 1 else { return }
                 try? await Task.sleep(for: .milliseconds(500))
-                let duration = Double(spare / 40)
+                let lap = full + Self.gap
+                let duration = Double(lap / 40)
                 while !Task.isCancelled {
                     moving = true
-                    withAnimation(.linear(duration: duration)) { shift = -spare }
-                    try? await Task.sleep(for: .seconds(duration + 1.2))
+                    withAnimation(.linear(duration: duration)) { shift = -lap }
+                    try? await Task.sleep(for: .seconds(duration))
                     guard !Task.isCancelled else { break }
-                    withAnimation(.linear(duration: duration)) { shift = 0 }
-                    try? await Task.sleep(for: .seconds(duration + 1.2))
+                    shift = 0
+                    try? await Task.sleep(for: .seconds(1.2))
                 }
             }
     }

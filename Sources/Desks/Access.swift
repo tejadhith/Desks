@@ -88,6 +88,23 @@ enum Access {
         return (app.processIdentifier, id)
     }
 
+    static func element(of window: Sky.Window) -> AXUIElement? {
+        windows(of: window.pid).first { $0.id == window.id }?.element
+    }
+
+    static func lift(_ window: Sky.Window) {
+        guard let element = element(of: window) else { return }
+        _ = press(element, kAXRaiseAction)
+    }
+
+    static func fit(_ element: AXUIElement, to frame: CGRect) {
+        var size = frame.size
+        guard let value = AXValueCreate(.cgSize, &size) else { return }
+        AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)
+        move(element, to: frame.origin)
+        AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)
+    }
+
     static func raise(_ window: Sky.Window) {
         var psn = ProcessSerialNumber()
         if process(window.pid, &psn) == noErr {

@@ -183,8 +183,9 @@ struct Card: View {
 
         TextField("Add a description", text: $item.detail, axis: .vertical)
             .textFieldStyle(.plain)
-            .font(.grotesk(12))
             .lineLimit(1...8)
+            .wrap(item.detail, lines: 8)
+            .font(.grotesk(12))
             .padding(.leading, Style.indent)
 
         todos
@@ -234,36 +235,66 @@ struct Card: View {
 
     private var todos: some View {
         VStack(alignment: .leading, spacing: 3) {
-            ForEach(item.todos) { todo in
-                Check(todo: binding(todo.id), focus: $field, step: step) {
-                    tick(todo.id)
-                } remove: {
-                    item.todos.removeAll { $0.id == todo.id }
-                }
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: 14)
-                    .opacity(0.6)
-                TextField("Add a to-do", text: $entry, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .focused($field, equals: .add)
-                    .onSubmit(append)
-                    .onKeyPress(.upArrow) { step(-1) }
-                    .onExitCommand {
-                        entry = ""
-                        field = nil
+            if !item.todos.isEmpty {
+                Button {
+                    withAnimation(Style.fold(item.shelved)) { item.shelved.toggle() }
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: item.shelved ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(width: 14)
+                            .opacity(0.7)
+                        Text("To-dos")
+                            .font(.grotesk(12, .medium))
+                            .opacity(0.7)
+                        Text("\(item.todos.filter(\.done).count)/\(item.todos.count)")
+                            .font(.grotesk(12, .medium))
+                            .monospacedDigit()
+                            .opacity(0.5)
+                        Spacer(minLength: 0)
                     }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(item.shelved ? "Show to-dos" : "Hide to-dos")
             }
+            if !item.shelved || item.todos.isEmpty { list }
         }
         .font(.grotesk(12))
         .padding(.leading, Style.indent - 20)
+        .shelf(item.id, in: store)
         .onChange(of: field) { old, _ in
             guard case .todo(let id)? = old,
                   item.todos.first(where: { $0.id == id })?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
             else { return }
             item.todos.removeAll { $0.id == id }
+        }
+    }
+
+    @ViewBuilder
+    private var list: some View {
+        ForEach(item.todos) { todo in
+            Check(todo: binding(todo.id), focus: $field, step: step) {
+                tick(todo.id)
+            } remove: {
+                item.todos.removeAll { $0.id == todo.id }
+            }
+        }
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "plus")
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 14)
+                .opacity(0.6)
+            TextField("Add a to-do", text: $entry, axis: .vertical)
+                .textFieldStyle(.plain)
+                .wrap(entry)
+                .focused($field, equals: .add)
+                .onSubmit(append)
+                .onKeyPress(.upArrow) { step(-1) }
+                .onExitCommand {
+                    entry = ""
+                    field = nil
+                }
         }
     }
 
@@ -342,7 +373,7 @@ private struct Check: View {
             TextField("To-do", text: $todo.text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .focused(focus, equals: .todo(todo.id))
-                .onSubmit { focus.wrappedValue = nil }
+                .onKeyPress(.return) { step(1) }
                 .onKeyPress(.upArrow) { step(-1) }
                 .onKeyPress(.downArrow) { step(1) }
                 .foregroundStyle(struck ? Color.clear : Color.ink)
@@ -359,7 +390,7 @@ private struct Check: View {
                             .allowsHitTesting(false)
                     }
                 }
-            Spacer(minLength: 0)
+                .wrap(todo.text)
             Button(action: remove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .bold))

@@ -63,6 +63,19 @@ enum Carry {
         return true
     }
 
+    static func fit(_ frame: CGRect?, from source: String, to target: String) -> CGRect? {
+        guard let frame, let from = Sky.area(of: source), let to = Sky.area(of: target) else { return nil }
+        guard source != target else { return frame }
+        let x = to.width / from.width
+        let y = to.height / from.height
+        return CGRect(
+            x: to.minX + (frame.minX - from.minX) * x,
+            y: to.minY + (frame.minY - from.minY) * y,
+            width: frame.width * x,
+            height: frame.height * y
+        )
+    }
+
     static func bounds(_ id: UInt32) -> CGRect? {
         guard let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(id)) as? [[String: Any]])?.first,
               let bounds = info[kCGWindowBounds as String] as? NSDictionary

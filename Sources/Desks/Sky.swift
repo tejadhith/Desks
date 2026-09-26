@@ -118,6 +118,11 @@ enum Sky {
         return CGRect(x: frame.minX, y: top - frame.maxY, width: frame.width, height: frame.height)
     }
 
+    static func area(of display: String) -> CGRect? {
+        guard let top = NSScreen.screens.first?.frame.maxY, let frame = screen(display)?.visibleFrame else { return nil }
+        return CGRect(x: frame.minX, y: top - frame.maxY, width: frame.width, height: frame.height)
+    }
+
     static func name(of display: String) -> String? {
         screen(display)?.localizedName
     }
