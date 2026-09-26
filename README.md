@@ -10,15 +10,15 @@ Keep a short list of what you are working on in the top-right corner of the scre
 
 - **A desktop per task.** Creating a task adds a new desktop and takes you there. Desktop 1 stays home for unsorted windows.
 - **Upcoming tasks.** Press `⌘↩` instead of `↩` to save a task for later without a desktop, then start it when you are ready.
-- **Descriptions and to-dos.** Jot down what the task is about and keep a checklist. `↩` adds a to-do, `↑`/`↓` move between them, and `⌘↩` checks or unchecks one and moves on. Collapsed tasks show how many are done.
+- **Descriptions and to-dos.** Jot down what the task is about and keep a checklist. `↩` adds a to-do or moves to the next one, `↑`/`↓` move between them, and `⌘↩` checks or unchecks one and moves on. Click **To-dos** to tuck a long list away; collapsed tasks and lists show how many are done.
 - **Live window lists.** See which windows sit on each task's desktop and click one to jump to it.
 - **Switch fast.** Click a task, or use the macOS `⌃1`–`⌃9` desktop shortcuts shown on each task.
 - **Organize.** Drag a task by its name to reorder it; the others slide out of the way. Double-click a name to rename it, and hover a long name to scroll the rest into view.
-- **Move windows.** Drag a window's row onto a task, right-click it and choose **Send to**, or send the front window to a task with one click.
+- **Move windows.** Drag any window by its title bar onto a task in the panel, drag a window's row onto a task, right-click it and choose **Send to**, or send the front window to a task with one click. The window comes to the front on its new desktop and keeps its size and place, scaled to fit when it moves to another screen.
 - **Coding-agent conversations.** Link conversations from Claude Code in the Claude app, Codex, Devin, and the VS Code Agents window to a task. Conversations that aren't linked yet wait in an unsorted list for each app; drag one onto a task to link it. Clicking a linked conversation brings the app's window to the task's desktop and opens that conversation; clicking an unlinked one takes you to the desktop where the app is. Each conversation shows whether it is working, needs you, or is done. See [Coding agents](#coding-agents).
 - **Multiple displays.** Desktops on every screen are listed and switched correctly. Move a task to another screen from its right-click menu. When a screen is unplugged, its tasks move to the built-in screen and return when it is plugged back in.
 - **Stays out of the way.** Tasks collapse to a single line with app icons, the panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
-- **Gestures from anywhere.** Double-tap `⌃` to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold `⌃` to see through it. Double-tap `⌥` to fold the task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel.
+- **Gestures from anywhere.** Double-tap `⌃` to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold `⌃` to see through it. Double-tap `⌥` to fold the to-dos or task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel.
 
 ## Requirements
 
