@@ -106,6 +106,18 @@ struct Note: View {
                 .font(.grotesk(11, .medium))
                 .monospacedDigit()
                 .opacity(0.7)
+            if let here = store.here {
+                Text("·")
+                    .font(.grotesk(11, .medium))
+                    .opacity(0.4)
+                Text(here)
+                    .font(.grotesk(11, .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .opacity(0.7)
+                    .layoutPriority(-1)
+                    .help("The desktop you are on")
+            }
             if store.busy {
                 ProgressView()
                     .controlSize(.mini)

@@ -8,71 +8,76 @@ Keep a short list of what you are working on in the top-right corner of the scre
 
 ## Features
 
-### A desktop per task
-
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/desktops.gif" alt="Creating a task, which adds its own desktop in Mission Control"><br>
+<b>A desktop per task</b><br>
 Creating a task takes you to its own desktop, reusing an empty spare one when there is one. Desktop 1 stays home for unsorted windows. Right-click a desktop that isn't a task to remove it.
-
-![Creating a task, which adds its own desktop in Mission Control](docs/desktops.gif)
-
-### Upcoming tasks
-
-Press `⌘↩` instead of `↩` to save a task for later without a desktop, then start it when you are ready. Right-click an active task and choose **Move to Upcoming** to put it back; its desktop goes away and its windows stay open.
-
-![Saving a task for later with Command-Return, then moving an active task to Upcoming](docs/upcoming.gif)
-
-### Descriptions and to-dos
-
-Jot down what the task is about and keep a checklist. `↩` adds a to-do or moves to the next one, `↑`/`↓` move between them, and `⌘↩` checks or unchecks one and moves on. Click **To-dos** to tuck a long list away; collapsed tasks and lists show how many are done.
-
-![Writing a description, adding and checking off to-dos, and tucking the list away](docs/todos.gif)
-
-### Live window lists
-
+</td>
+<td width="50%" valign="top">
+<img src="docs/upcoming.gif" alt="Saving a task for later with Command-Return, then moving an active task to Upcoming"><br>
+<b>Upcoming tasks</b><br>
+Press <code>⌘↩</code> instead of <code>↩</code> to save a task for later without a desktop, then start it when you are ready. Right-click an active task and choose <b>Move to Upcoming</b> to put it back; its desktop goes away and its windows stay open.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/todos.gif" alt="Writing a description, adding and checking off to-dos, and tucking the list away"><br>
+<b>Descriptions and to-dos</b><br>
+Jot down what the task is about and keep a checklist. <code>↩</code> adds a to-do or moves to the next one, <code>↑</code>/<code>↓</code> move between them, and <code>⌘↩</code> checks or unchecks one and moves on. Click <b>To-dos</b> to tuck a long list away; collapsed tasks and lists show how many are done.
+</td>
+<td width="50%" valign="top">
+<img src="docs/windows.gif" alt="Expanding a task and clicking its windows to jump to them"><br>
+<b>Live window lists</b><br>
 See which windows sit on each task's desktop and click one to jump to it.
-
-![Expanding a task and clicking its windows to jump to them](docs/windows.gif)
-
-### Switch fast
-
-Click a task, or use the macOS `⌃1`–`⌃9` desktop shortcuts shown on each task.
-
-![Switching tasks by clicking and with Control-number shortcuts](docs/switch.gif)
-
-### Organize
-
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/switch.gif" alt="Switching tasks by clicking and with Control-number shortcuts"><br>
+<b>Switch fast</b><br>
+Click a task, or use the macOS <code>⌃1</code>–<code>⌃9</code> desktop shortcuts shown on each task.
+</td>
+<td width="50%" valign="top">
+<img src="docs/organize.gif" alt="Reordering tasks by dragging, renaming one, and scrolling a long name"><br>
+<b>Organize</b><br>
 Drag a task by its name to reorder it; the others slide out of the way. Double-click a name to rename it, and hover a long name to scroll the rest into view.
-
-![Reordering tasks by dragging, renaming one, and scrolling a long name](docs/organize.gif)
-
-### Move windows
-
-Drag any window by its title bar onto a task in the panel, drag a window's row onto a task, right-click it and choose **Send to**, or send the front window to a task with one click. The window comes to the front on its new desktop and keeps its size and place, scaled to fit when it moves to another screen.
-
-![Dragging a window by its title bar onto a task, dragging a window row, and using Send to](docs/move.gif)
-
-### Coding-agent conversations
-
-Link conversations from Claude Code in the Claude app, Codex, Devin, and the VS Code Agents window to a task. Conversations that aren't linked yet wait in an unsorted list for each app; drag one onto a task to link it, and hover a linked one and click × to unlink it. Clicking a linked conversation brings the app's window to the task's desktop and opens that conversation; clicking an unlinked one takes you to the desktop where the app is. Each conversation shows whether it is working, needs you, or is done. See [Coding agents](#coding-agents).
-
-![Linking an unsorted conversation to a task, opening it on the task's desktop, and unlinking another](docs/agents.gif)
-
-### Multiple displays
-
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/move.gif" alt="Dragging a window by its title bar onto a task, dragging a window row, and using Send to"><br>
+<b>Move windows</b><br>
+Drag any window by its title bar onto a task in the panel, drag a window's row onto a task, right-click it and choose <b>Send to</b>, or send the front window to a task with one click. The window comes to the front on its new desktop and keeps its size and place, scaled to fit when it moves to another screen.
+</td>
+<td width="50%" valign="top">
+<img src="docs/agents.gif" alt="Linking an unsorted conversation to a task, opening it on the task&#x27;s desktop, and unlinking another"><br>
+<b>Coding-agent conversations</b><br>
+Link conversations from Claude Code in the Claude app, Codex, Devin, and the VS Code Agents window to a task. Conversations that aren't linked yet wait in an unsorted list for each app; drag one onto a task to link it, and hover a linked one and click × to unlink it. Clicking a linked conversation brings the app's window to the task's desktop and opens that conversation; clicking an unlinked one takes you to the desktop where the app is. Each conversation shows whether it is working, needs you, or is done. See <a href="#coding-agents">Coding agents</a>.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/displays.gif" alt="Moving a task and its windows to another screen"><br>
+<b>Multiple displays</b><br>
 Desktops on every screen are listed and switched correctly. Move a task to another screen from its right-click menu; it takes over an empty spare desktop there if there is one. When a screen is unplugged, its tasks move to the built-in screen and return when it is plugged back in.
-
-![Moving a task and its windows to another screen](docs/displays.gif)
-
-### Stays out of the way
-
+</td>
+<td width="50%" valign="top">
+<img src="docs/away.gif" alt="Folding the panel, snapping it back to the corner, and stepping below a notification"><br>
+<b>Stays out of the way</b><br>
 Tasks collapse to a single line with app icons, the panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
-
-![Folding the panel, snapping it back to the corner, and stepping below a notification](docs/away.gif)
-
-### Gestures from anywhere
-
-Double-tap `⌃` to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold `⌃` to see through it. Double-tap `⌥` to fold the to-dos or task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel.
-
-![Tucking the panel into the screen edge, seeing through it, and folding a task with Option](docs/gestures.gif)
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/gestures.gif" alt="Tucking the panel into the screen edge, seeing through it, and folding a task with Option"><br>
+<b>Gestures from anywhere</b><br>
+Double-tap <code>⌃</code> to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold <code>⌃</code> to see through it. Double-tap <code>⌥</code> to fold the to-dos or task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel.
+</td>
+<td width="50%"></td>
+</tr>
+</table>
 
 ## Requirements
 
@@ -108,6 +113,43 @@ Your existing entries and formatting are kept, and each file is copied to `<file
 Each hook runs a small script that records the app, session ID, event name, working folder, and time in `~/Library/Application Support/Desks/events/`. Prompts and replies are never recorded. Titles come from each app's own local session data. **Disconnect Coding Agents** removes the entries, the script, and the recorded events.
 
 A conversation appears after its next prompt and leaves the unsorted list 24 hours after its last activity, as each app records it. Archived, deleted and empty conversations never show. An app's unsorted list disappears while the app isn't running; conversations linked to tasks stay. An unlinked conversation goes back to the unsorted list if it was active in the last 24 hours, otherwise it leaves Desks. Not supported yet: agent CLIs running in a terminal, Claude chats (only Claude Code sessions), and cloud sessions.
+
+## Archive
+
+Deleting a task writes it to `~/Documents/Desks/Archive` as a Markdown file first, so finished work leaves a record instead of disappearing. Each file keeps the title, the description, the checklist with everything that was and wasn't done, and any linked conversations with their deep links:
+
+```markdown
+---
+task: "Repaint the hallway"
+created: 2026-04-02
+archived: 2026-04-11
+tags: [desks/archive]
+id: 00000000-0000-0000-0000-000000000000
+---
+
+# Repaint the hallway
+
+Archived 11 Apr 2026 · 9 days · 2/3 to-dos
+
+## To-dos
+
+- [x] Pick a colour
+- [x] Sand the trim
+- [ ] Second coat
+
+## Conversations
+
+- Codex — Paint coverage per coat
+  `codex://threads/00000000-0000-0000-0000-000000000000`
+```
+
+`Archive.md` alongside them gains a row per task, grouped by month. Choose **Open Archive** from the Desks menu bar icon to get to the folder; macOS asks once for access to your Documents folder when the first task is archived.
+
+Files are written once and never rewritten, so you can edit them freely. To read the archive in a notes app that keeps a folder of Markdown, such as Obsidian, point the folder at your vault before the first delete:
+
+```sh
+ln -s ~/Vault/Desks ~/Documents/Desks
+```
 
 ## How it works
 

@@ -127,7 +127,7 @@ enum Sky {
         screen(display)?.localizedName
     }
 
-    private static func screen(_ display: String) -> NSScreen? {
+    static func screen(_ display: String) -> NSScreen? {
         let screens = NSScreen.screens
         return display == "Main" ? screens.first : screens.first { screen in
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,

@@ -91,6 +91,16 @@ final class Store: ObservableObject {
         current != home?.id && !items.contains { space(for: $0)?.id == current }
     }
 
+    var here: String? {
+        here(on: current)?.name
+    }
+
+    func here(on id: UInt64) -> (space: Sky.Space, name: String)? {
+        guard let space = spaces.first(where: { $0.id == id }), let number = space.number else { return nil }
+        let item = items.first { self.space(for: $0)?.id == id }
+        return (space, item.map { $0.title.isEmpty ? "Untitled" : $0.title } ?? "Desktop \(number)")
+    }
+
     var upcoming: [Item] {
         items.filter { !started($0) }
     }
@@ -281,10 +291,12 @@ final class Store: ObservableObject {
 
     func remove(_ item: Item) {
         guard let space = space(for: item) else {
+            file(item)
             items.removeAll { $0.id == item.id }
             return
         }
         guard ready() else { return }
+        file(item)
         items.removeAll { $0.id == item.id }
         let siblings = desktops.filter { $0.display == space.display && $0.id != space.id }
         guard !siblings.isEmpty else {
@@ -292,6 +304,11 @@ final class Store: ObservableObject {
             return
         }
         run { await self.discard(space) }
+    }
+
+    private func file(_ item: Item) {
+        guard !Archive.store(item) else { return }
+        tell("Could not write the archive to \((Archive.folder.path as NSString).abbreviatingWithTildeInPath)")
     }
 
     func remove(_ space: Sky.Space) {

@@ -266,6 +266,7 @@ struct Card: View {
         .padding(.leading, Style.indent - 20)
         .shelf(item.id, in: store)
         .onChange(of: field) { old, _ in
+            if old == .add { commit() }
             guard case .todo(let id)? = old,
                   item.todos.first(where: { $0.id == id })?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
             else { return }
@@ -336,11 +337,17 @@ struct Card: View {
     }
 
     private func append() {
+        guard commit() else { return }
+        DispatchQueue.main.async { field = .add }
+    }
+
+    @discardableResult
+    private func commit() -> Bool {
         let text = entry.trimmingCharacters(in: .whitespacesAndNewlines)
         entry = ""
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return false }
         item.todos.append(Todo(text: text))
-        DispatchQueue.main.async { field = .add }
+        return true
     }
 }
 

@@ -12,6 +12,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private var hosting: NSView!
     private var away: Away!
     private var grab: Grab!
+    private var brow: Brow!
     private var hotkey: Hotkey!
     private var option: Hotkey!
     private var presses = 0
@@ -57,6 +58,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         agents = menu.addItem(withTitle: "", action: #selector(connect), keyEquivalent: "")
         name()
+        menu.addItem(withTitle: "Open Archive", action: #selector(archive), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Desks", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -73,6 +75,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         store.snap = { [weak self] in self?.anchor() }
         away = Away(panel: panel)
         grab = Grab(panel: panel, store: store)
+        brow = Brow(store: store)
         for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
             NotificationCenter.default.publisher(for: name, object: panel)
                 .sink { [weak self] _ in
@@ -208,6 +211,10 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private func name() {
         agents.title = Hooks.connected ? "Disconnect Coding Agents" : "Connect Coding Agents"
         agents.toolTip = "Claude Code, Codex, Devin and VS Code report their conversations to Desks through hooks"
+    }
+
+    @objc private func archive() {
+        Archive.open()
     }
 
     @objc private func connect() {
