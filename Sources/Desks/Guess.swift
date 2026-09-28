@@ -133,6 +133,8 @@ enum Guess {
     private static func shell(_ brain: Brain) -> [String: String] {
         var env = [
             "HOME": home.path,
+            "USER": NSUserName(),
+            "LOGNAME": NSUserName(),
             "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
             "TERM": "dumb",
             "DESKS_CLASSIFY": "1",
