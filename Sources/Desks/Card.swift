@@ -304,6 +304,11 @@ struct Card: View {
     private func tick(_ id: UUID) {
         guard let index = item.todos.firstIndex(where: { $0.id == id }) else { return }
         item.todos[index].done.toggle()
+        if item.todos[index].done {
+            Archive.log(item.todos[index], in: item)
+        } else {
+            Archive.undo(item.todos[index], in: item)
+        }
         land(order[index + 1])
     }
 

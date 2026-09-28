@@ -11,6 +11,7 @@ enum Hooks {
 
     private static let body = #"""
     #!/bin/sh
+    [ -n "$DESKS_CLASSIFY" ] && exit 0
     agent="$1"
     event="$2"
     input=$(cat)
@@ -46,10 +47,23 @@ enum Hooks {
         esac
     fi
     cwd=$(field cwd | sed 's/\\/\\\\/g; s/"/\\"/g')
+    parent=$PPID
+    tool=""
+    hop=0
+    while [ "$hop" -lt 4 ] && [ -n "$parent" ] && [ "$parent" != 1 ]; do
+        name=$(/bin/ps -o comm= -p "$parent" 2>/dev/null)
+        case "${name##*/}" in
+            ""|sh|bash|zsh|dash|env|node|python*|login) ;;
+            *) tool=$name; break ;;
+        esac
+        parent=$(/bin/ps -o ppid= -p "$parent" 2>/dev/null | tr -d ' ')
+        hop=$((hop + 1))
+    done
+    tool=$(printf '%s' "$tool" | sed 's/\\/\\\\/g; s/"/\\"/g')
     dir="$HOME/Library/Application Support/Desks/events"
     mkdir -p "$dir"
     name=$(printf '%s.%s' "$agent" "$session" | tr -c 'A-Za-z0-9_.-' '_')
-    printf '{"agent":"%s","session":"%s","event":"%s","cwd":"%s","time":%s}\n' "$agent" "$session" "$event" "$cwd" "$(date +%s)" > "$dir/.$name.$$" && mv -f "$dir/.$name.$$" "$dir/$name.json"
+    printf '{"agent":"%s","session":"%s","event":"%s","cwd":"%s","tool":"%s","time":%s}\n' "$agent" "$session" "$event" "$cwd" "$tool" "$(date +%s)" > "$dir/.$name.$$" && mv -f "$dir/.$name.$$" "$dir/$name.json"
     exit 0
 
     """#
@@ -149,7 +163,7 @@ enum Hooks {
                 try? manager.removeItem(at: file)
                 return nil
             }
-            return Beat(agent: agent, session: session, status: Status(json["event"] as? String ?? ""), cwd: json["cwd"] as? String ?? "", time: time)
+            return Beat(agent: agent, session: session, status: Status(json["event"] as? String ?? ""), cwd: json["cwd"] as? String ?? "", tool: json["tool"] as? String ?? "", time: time)
         }
     }
 

@@ -110,40 +110,54 @@ Coding-agent support is off until you choose **Connect Coding Agents** from the 
 
 Your existing entries and formatting are kept, and each file is copied to `<file>.desks-backup` before its first change. Codex runs new hooks only after you approve them with `/hooks`.
 
-Each hook runs a small script that records the app, session ID, event name, working folder, and time in `~/Library/Application Support/Desks/events/`. Prompts and replies are never recorded. Titles come from each app's own local session data. **Disconnect Coding Agents** removes the entries, the script, and the recorded events.
+Each hook runs a small script that records the app, session ID, event name, working folder, the program that ran it, and the time in `~/Library/Application Support/Desks/events/`. Prompts and replies are never written there. Titles come from each app's own local session data. **Disconnect Coding Agents** removes the entries, the script, and the recorded events.
+
+Desks sorts a new conversation onto a task by itself. It reads the messages you sent — from the app's own session files, not from the recorded events — and asks a coding agent's own CLI, whichever of Devin, Codex or Claude Code answers, which one task the conversation is work on. Your task names, descriptions and to-dos go with the question, and the answer is one task or none: a conversation that matches nothing stays unsorted, and you can still drag it yourself. The question runs as its own one-shot process, so it never enters the conversation you are having, and Devin's runs against a scratch folder so it leaves nothing in your own history. Unlinking a conversation from a task keeps it off that task for good, but it can still be sorted onto another.
 
 A conversation appears after its next prompt and leaves the unsorted list 24 hours after its last activity, as each app records it. Archived, deleted and empty conversations never show. An app's unsorted list disappears while the app isn't running; conversations linked to tasks stay. An unlinked conversation goes back to the unsorted list if it was active in the last 24 hours, otherwise it leaves Desks. Not supported yet: agent CLIs running in a terminal, Claude chats (only Claude Code sessions), and cloud sessions.
 
 ## Archive
 
-Deleting a task writes it to `~/Documents/Desks/Archive` as a Markdown file first, so finished work leaves a record instead of disappearing. Each file keeps the title, the description, the checklist with everything that was and wasn't done, and any linked conversations with their deep links:
+Every task keeps a Markdown file in `~/Documents/Desks/Archive`, so work leaves a record instead of disappearing. The file appears the first time you check off a to-do and each later tick appends a line with its date, which means a task you keep for months still logs what got finished:
 
 ```markdown
 ---
 task: "Repaint the hallway"
 created: 2026-04-02
-archived: 2026-04-11
 tags: [desks/archive]
 id: 00000000-0000-0000-0000-000000000000
 ---
 
 # Repaint the hallway
 
-Archived 11 Apr 2026 · 9 days · 2/3 to-dos
-
 ## To-dos
 
-- [x] Pick a colour
-- [x] Sand the trim
+- [x] Pick a colour · 3 Apr
+- [x] Sand the trim · 11 Apr
+```
+
+Unchecking a to-do removes its line again if it was the last one written; edit the file yourself after that. Renaming a task renames the file and its heading.
+
+Deleting a task closes its file out: whatever was left unfinished, the description, any linked conversations with their deep links, and how long the task was around. Nothing written earlier is rewritten, so your own edits survive.
+
+```markdown
 - [ ] Second coat
+
+## Notes
+
+Two coats, satin finish.
 
 ## Conversations
 
 - Codex — Paint coverage per coat
   `codex://threads/00000000-0000-0000-0000-000000000000`
+
+---
+
+Archived 11 Apr 2026 · 9 days · 2/3 to-dos
 ```
 
-`Archive.md` alongside them gains a row per task, grouped by month. Choose **Open Archive** from the Desks menu bar icon to get to the folder; macOS asks once for access to your Documents folder when the first task is archived.
+`Archive.md` in the same folder gains a row per deleted task, grouped by month. Choose **Open Archive** from the Desks menu bar icon to get to the folder; macOS asks once for access to your Documents folder the first time something is written.
 
 Files are written once and never rewritten, so you can edit them freely. To read the archive in a notes app that keeps a folder of Markdown, such as Obsidian, point the folder at your vault before the first delete:
 

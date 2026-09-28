@@ -48,6 +48,8 @@ final class Store: ObservableObject {
     private var zones: [UInt64: CGRect] = [:]
     private var inboxes: [Agent: CGRect] = [:]
     private var looked: [String: Date] = [:]
+    private var sifted: [String: Date] = [:]
+    private var sorting = false
     var snap: () -> Void = {}
 
     private let url: URL
@@ -443,6 +445,9 @@ final class Store: ObservableObject {
         guard items.contains(where: { $0.chats.contains { $0.id == chat.id } }) else { return }
         items = items.map { item in
             var item = item
+            if item.chats.contains(where: { $0.id == chat.id }), !item.refused.contains(chat.id) {
+                item.refused.append(chat.id)
+            }
             item.chats.removeAll { $0.id == chat.id }
             return item
         }
@@ -849,6 +854,11 @@ final class Store: ObservableObject {
         var beats: [String: Beat] = [:]
         for beat in found where (beats[beat.id]?.time ?? .distantPast) <= beat.time { beats[beat.id] = beat }
         if beats != self.beats { self.beats = beats }
+        var tools: [Agent: String] = [:]
+        for beat in beats.values.sorted(by: { $0.time < $1.time }) where !beat.tool.isEmpty {
+            tools[beat.agent] = beat.tool
+        }
+        if !tools.isEmpty { Guess.learn(tools) }
         let now = Date()
         var wanted: [String: (agent: Agent, session: String, cwd: String)] = [:]
         for chat in items.flatMap(\.chats) { wanted[chat.id] = (chat.agent, chat.session, "") }
@@ -890,6 +900,43 @@ final class Store: ObservableObject {
             return item
         }
         if next != items { items = next }
+        sift()
+    }
+
+    private func brief(_ item: Item) -> String {
+        var bits = [item.title]
+        if !item.detail.isEmpty { bits.append(item.detail) }
+        let todos = item.todos.map(\.text).filter { !$0.isEmpty }
+        if !todos.isEmpty { bits.append("to-dos: " + todos.joined(separator: "; ")) }
+        return bits.joined(separator: " - ")
+    }
+
+    private func sift() {
+        guard !sorting, Hooks.connected, !items.isEmpty else { return }
+        let cutoff = Date().addingTimeInterval(-86400)
+        let taken = linked
+        let waiting = beats.values
+            .filter { !taken.contains($0.id) && !hidden.contains($0.id) && latest($0) > cutoff }
+            .filter { beat in sifted[beat.id].map { beat.time > $0 } ?? true }
+            .sorted { latest($0) > latest($1) }
+        guard let beat = waiting.first else { return }
+        let chat = Chat(agent: beat.agent, session: beat.session, title: named[beat.id] ?? "")
+        let tasks = items.filter { !$0.refused.contains(chat.id) }.map { (id: $0.id, text: brief($0)) }
+        guard !tasks.isEmpty else { return }
+        sifted[chat.id] = Date()
+        sorting = true
+        let title = chat.title
+        let cwd = beat.cwd
+        Task.detached(priority: .background) { [weak self] in
+            let pick = Guess.sort(chat, title: title, cwd: cwd, tasks: tasks)
+            await self?.settle(chat, pick)
+        }
+    }
+
+    private func settle(_ chat: Chat, _ pick: UUID?) {
+        sorting = false
+        guard let pick, items.contains(where: { $0.id == pick && !$0.refused.contains(chat.id) }) else { return }
+        attach(chat, to: pick)
     }
 
     private func glance() {

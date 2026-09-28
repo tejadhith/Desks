@@ -10,6 +10,7 @@ struct Item: Codable, Identifiable, Equatable {
     var todos: [Todo] = []
     var shelved = false
     var chats: [Chat] = []
+    var refused: [String] = []
     var created = Date()
 }
 
@@ -31,6 +32,7 @@ extension Item {
         todos = try values.decodeIfPresent([Todo].self, forKey: .todos) ?? []
         shelved = try values.decodeIfPresent(Bool.self, forKey: .shelved) ?? false
         chats = try values.decodeIfPresent([Chat].self, forKey: .chats) ?? []
+        refused = try values.decodeIfPresent([String].self, forKey: .refused) ?? []
         created = try values.decodeIfPresent(Date.self, forKey: .created) ?? Date()
     }
 }
