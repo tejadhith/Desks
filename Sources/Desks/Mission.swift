@@ -6,13 +6,24 @@ enum Mission {
     private static let app = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
     private static let source = CGEventSource(stateID: .hidSystemState)
 
-    private static var root: AXUIElement? {
-        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else { return nil }
-        let element = AXUIElementCreateApplication(dock.processIdentifier)
-        return Access.children(element).first { Access.identifier($0) == "mc" }
+    private static func process(_ bundle: String) -> AXUIElement? {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first else { return nil }
+        return AXUIElementCreateApplication(app.processIdentifier)
     }
 
-    static var isOpen: Bool { root != nil }
+    private static var root: AXUIElement? {
+        process("com.apple.dock").flatMap { Access.children($0).first { Access.identifier($0) == "mc" } }
+    }
+
+    private static var managed: [AXUIElement] {
+        (process("com.apple.WindowManager").map(Access.children) ?? []).filter { Access.identifier($0) == "mc.display" }
+    }
+
+    private static var displays: [AXUIElement] {
+        managed + (root.map(Access.children) ?? []).filter { Access.identifier($0) == "mc.display" }
+    }
+
+    static var isOpen: Bool { root != nil || !displays.isEmpty }
 
     static func open() {
         guard !isOpen else { return }
@@ -65,9 +76,7 @@ enum Mission {
         try? await Task.sleep(for: .milliseconds(800))
         var thumbs: [AXUIElement] = []
         for _ in 0..<30 where thumbs.isEmpty {
-            if let windows = search(screen, "mc.windows", depth: 0) {
-                thumbs = matches(title, in: Access.children(windows))
-            }
+            thumbs = matches(title, in: windows(on: screen))
             if thumbs.isEmpty { try? await Task.sleep(for: .milliseconds(50)) }
         }
         guard let thumb = pick(thumbs, near: spot, on: display, in: screen),
@@ -80,27 +89,53 @@ enum Mission {
         }
         let cursor = CGEvent(source: nil)?.location ?? .zero
         defer { CGWarpMouseCursorPosition(cursor) }
-        let hover = CGPoint(x: first.x, y: first.y + 40)
+        let hover = CGPoint(x: first.midX, y: first.midY + 40)
         mouse(.mouseMoved, at: start)
         try? await Task.sleep(for: .milliseconds(100))
         mouse(.leftMouseDown, at: start)
         try? await Task.sleep(for: .milliseconds(300))
         await glide(from: start, to: hover, steps: 30)
         try? await Task.sleep(for: .milliseconds(600))
-        let target = button(label, in: list) ?? first
-        await glide(from: hover, to: target, steps: 10)
-        try? await Task.sleep(for: .milliseconds(400))
-        mouse(.leftMouseUp, at: target)
+        var at = hover
+        var target = button(label, in: list) ?? first
+        var hit = true
+        if managed.isEmpty {
+            at = center(target)
+            await glide(from: hover, to: at, steps: 10)
+            try? await Task.sleep(for: .milliseconds(400))
+        } else {
+            for _ in 0..<5 {
+                await glide(from: at, to: center(target), steps: 10)
+                at = center(target)
+                try? await Task.sleep(for: .milliseconds(400))
+                guard let now = button(label, in: list), now != target else { break }
+                target = now
+            }
+            hit = button(label, in: list)?.contains(at) == true
+            if !hit { await glide(from: at, to: start, steps: 20) }
+        }
+        mouse(.leftMouseUp, at: hit ? at : start)
         try? await Task.sleep(for: .milliseconds(700))
         await close()
-        return true
+        return hit
+    }
+
+    private static func windows(on screen: AXUIElement) -> [AXUIElement] {
+        if let windows = search(screen, "mc.windows", depth: 0) { return Access.children(windows) }
+        return Access.children(screen).filter { Access.identifier($0)?.hasPrefix("mc.") != true }
     }
 
     private static func matches(_ title: String, in thumbs: [AXUIElement]) -> [AXUIElement] {
         let named = thumbs.compactMap { thumb in (Access.value(thumb, kAXTitleAttribute) as String?).map { (thumb, $0) } }
         let exact = named.filter { $0.1 == title }
         if !exact.isEmpty { return exact.map(\.0) }
-        return named.filter { !$0.1.isEmpty && (title.hasPrefix($0.1) || $0.1.hasPrefix(title)) }.map(\.0)
+        return named.filter { !$0.1.isEmpty && (title.hasPrefix($0.1) || $0.1.hasPrefix(title) || clipped($0.1, title)) }.map(\.0)
+    }
+
+    private static func clipped(_ short: String, _ title: String) -> Bool {
+        let parts = short.components(separatedBy: "…")
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty, title.hasPrefix(parts[0]) else { return false }
+        return title.dropFirst(parts[0].count).contains(parts[1])
     }
 
     private static func settle(_ thumb: AXUIElement) async -> CGRect? {
@@ -116,7 +151,7 @@ enum Mission {
 
     private static func pick(_ thumbs: [AXUIElement], near spot: CGPoint?, on display: String, in screen: AXUIElement) -> AXUIElement? {
         guard thumbs.count > 1, let spot, let frame = Sky.frame(of: display),
-              let area = search(screen, "mc.windows", depth: 0).flatMap(Access.frame)
+              let area = Access.frame(search(screen, "mc.windows", depth: 0) ?? screen)
         else { return thumbs.first }
         let goal = CGPoint(x: (spot.x - frame.minX) / frame.width, y: (spot.y - frame.minY) / frame.height)
         return thumbs.min { lhs, rhs in
@@ -129,11 +164,12 @@ enum Mission {
         return hypot((point.x - area.minX) / area.width - goal.x, (point.y - area.minY) / area.height - goal.y)
     }
 
-    private static func button(_ label: String, in list: AXUIElement) -> CGPoint? {
-        Access.children(list)
-            .first { (Access.value($0, kAXTitleAttribute) as String?) == label }
+    private static func button(_ label: String, in list: AXUIElement) -> CGRect? {
+        guard let frame = Access.children(list)
+            .first(where: { (Access.value($0, kAXTitleAttribute) as String?) == label })
             .flatMap(Access.frame)
-            .map(center)
+        else { return nil }
+        return !managed.isEmpty ? frame.offsetBy(dx: -frame.width / 2, dy: -frame.height / 2) : frame
     }
 
     private static func center(_ rect: CGRect) -> CGPoint {
@@ -169,15 +205,13 @@ enum Mission {
     private static func screen(_ display: String) async -> AXUIElement? {
         let frame = Sky.frame(of: display)
         for _ in 0..<40 {
-            if let root {
-                let screens = Access.children(root).filter { Access.identifier($0) == "mc.display" }
-                let match = screens.first { screen in
-                    guard let frame, let box = Access.frame(screen) else { return false }
-                    return abs(box.minX - frame.minX) < 2 && abs(box.minY - frame.minY) < 2
-                }
-                if let match { return match }
-                if screens.count == 1 { return screens[0] }
+            let screens = displays
+            let match = screens.first { screen in
+                guard let frame, let box = Access.frame(screen) else { return false }
+                return abs(box.minX - frame.minX) < 2 && abs(box.minY - frame.minY) < 2
             }
+            if let match { return match }
+            if screens.count == 1 { return screens[0] }
             try? await Task.sleep(for: .milliseconds(50))
         }
         return nil
