@@ -30,8 +30,21 @@ extension View {
         modifier(Spot(key: id) { store.place(shelf: $0, $1, by: $2) })
     }
 
+    func glide(_ id: UUID, in store: Store) -> some View {
+        offset(y: store.shift(for: id))
+            .animation(.easeInOut(duration: 0.18), value: store.tug?.slot)
+    }
+
+    func row(_ id: UUID, in store: Store) -> some View {
+        modifier(Spot(key: id) { store.place(row: $0, $1, by: $2) })
+    }
+
     func card(_ id: UUID, in store: Store) -> some View {
         modifier(Spot(key: id) { store.place(card: $0, $1, by: $2) })
+    }
+
+    func leaf(_ leaf: Leaf, in store: Store) -> some View {
+        modifier(Spot(key: leaf) { store.place(leaf: $0, $1, by: $2) })
     }
 
     func inbox(_ agent: Agent, in store: Store) -> some View {

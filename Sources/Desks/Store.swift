@@ -7,11 +7,19 @@ struct Lift: Equatable {
     let frames: [UUID: CGRect]
     var shift: CGFloat = 0
     var slot: Int
+    var owner: UUID?
 }
 
 enum Aim: Equatable {
     case card(UUID)
     case inbox(Agent)
+}
+
+enum Leaf: Hashable {
+    case task(UUID)
+    case desk(UInt64)
+    case unsorted(Agent)
+    case upcoming
 }
 
 @MainActor
@@ -32,7 +40,15 @@ final class Store: ObservableObject {
     @Published private(set) var carrying: Sky.Window?
     @Published private(set) var pointer: CGPoint = .zero
     @Published private(set) var lift: Lift?
+    @Published private(set) var tug: Lift?
+    @Published private(set) var peek: Set<Leaf> = []
+    private var leaves: [Leaf: CGRect] = [:]
+    private var dwell: Task<Void, Never>?
+    private var spot: CGPoint?
+    private var mark: CGPoint?
+    private var muted: Leaf?
     private var cards: [UUID: CGRect] = [:]
+    private var rows: [UUID: CGRect] = [:]
     private var shelves: [UUID: CGRect] = [:]
     private var owners: [String: UUID] = [:]
     @Published private(set) var hovered: UInt64?
@@ -137,16 +153,28 @@ final class Store: ObservableObject {
     }
 
     private func latest(_ beat: Beat) -> Date {
-        let busy = beat.status == .running || beat.status == .waiting
+        let busy = beat.status == .running || beat.status == .waiting || beat.status == .done
         return max(active[beat.id] ?? .distantPast, busy ? beat.time : .distantPast)
     }
 
-    func chats(of item: Item) -> [Chat] {
-        item.chats.map { chat in
+    func chats(of item: Item, keep: Int? = nil) -> [Chat] {
+        let all = item.chats.map { chat in
             var chat = chat
             if let title = named[chat.id], !title.isEmpty { chat.title = title }
             return chat
         }
+        let ranked = all.enumerated()
+            .sorted { left, right in
+                let (a, b) = (score(left.element), score(right.element))
+                return a == b ? left.offset > right.offset : a > b
+            }
+            .map(\.element)
+        guard let keep, ranked.count > keep else { return ranked }
+        return Array(ranked.prefix(keep))
+    }
+
+    private func score(_ chat: Chat) -> Date {
+        beats[chat.id].map(latest) ?? .distantPast
     }
 
     func homes(for chat: Chat) -> [Item] {
@@ -544,9 +572,19 @@ final class Store: ObservableObject {
         shelves[id] = frame
     }
 
+    func place(row id: UUID, _ frame: CGRect?, by token: UUID) {
+        guard own("row \(id)", frame, token) else { return }
+        rows[id] = frame
+    }
+
     func place(card id: UUID, _ frame: CGRect?, by token: UUID) {
         guard own("card \(id)", frame, token) else { return }
         cards[id] = frame
+    }
+
+    func place(leaf: Leaf, _ frame: CGRect?, by token: UUID) {
+        guard own("leaf \(leaf)", frame, token) else { return }
+        leaves[leaf] = frame
     }
 
     func place(inbox agent: Agent, _ frame: CGRect?, by token: UUID) {
@@ -608,14 +646,53 @@ final class Store: ObservableObject {
         if lift != self.lift { self.lift = lift }
     }
 
-    func offset(for id: UUID) -> CGFloat {
+    func tug(_ todo: UUID, in owner: UUID, by translation: CGFloat) {
+        guard let item = items.first(where: { $0.id == owner }), let row = item.todos.first(where: { $0.id == todo }) else { return }
+        if tug?.id != todo {
+            let order = item.todos.filter { $0.done == row.done }.map(\.id)
+            tug = Lift(id: todo, order: order, frames: rows.filter { order.contains($0.key) }, slot: order.firstIndex(of: todo) ?? 0, owner: owner)
+        }
+        guard var tug, let frame = tug.frames[todo],
+              let first = tug.order.first.flatMap({ tug.frames[$0] }),
+              let last = tug.order.last.flatMap({ tug.frames[$0] })
+        else { return }
+        tug.shift = min(max(translation, first.minY - frame.minY), last.maxY - frame.maxY)
+        let edge = tug.shift > 0 ? frame.maxY + tug.shift : frame.minY + tug.shift
+        tug.slot = tug.order.filter { $0 != todo }.filter { (tug.frames[$0]?.midY ?? 0) < edge }.count
+        if tug != self.tug { self.tug = tug }
+    }
+
+    func shed() {
+        guard let tug, let at = items.firstIndex(where: { $0.id == tug.owner }) else { return }
+        var order = tug.order.filter { $0 != tug.id }
+        order.insert(tug.id, at: min(tug.slot, order.count))
+        var queue = order.compactMap { id in items[at].todos.first { $0.id == id } }[...]
+        let next = items[at].todos.map { tug.order.contains($0.id) && !queue.isEmpty ? queue.removeFirst() : $0 }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if next.map(\.id) != items[at].todos.map(\.id) { items[at].todos = next }
+            self.tug = nil
+        }
+    }
+
+    func offset(for id: UUID) -> CGFloat { travel(lift, id, 1, free: true) }
+
+    func shift(for id: UUID) -> CGFloat { travel(tug, id, 3, free: false) }
+
+    private func travel(_ lift: Lift?, _ id: UUID, _ gap: CGFloat, free: Bool) -> CGFloat {
         guard let lift, let from = lift.order.firstIndex(of: lift.id), let index = lift.order.firstIndex(of: id),
               let height = lift.frames[lift.id]?.height
         else { return 0 }
-        if id == lift.id { return lift.shift }
-        if from < lift.slot, index > from, index <= lift.slot { return -(height + 1) }
-        if from > lift.slot, index >= lift.slot, index < from { return height + 1 }
+        if id == lift.id { return free ? lift.shift : snap(lift, from, gap) }
+        if from < lift.slot, index > from, index <= lift.slot { return -(height + gap) }
+        if from > lift.slot, index >= lift.slot, index < from { return height + gap }
         return 0
+    }
+
+    private func snap(_ lift: Lift, _ from: Int, _ gap: CGFloat) -> CGFloat {
+        let span = from < lift.slot ? (from + 1)...lift.slot : from > lift.slot ? lift.slot...(from - 1) : nil
+        guard let span else { return 0 }
+        let travel = span.reduce(CGFloat(0)) { $0 + (lift.frames[lift.order[$1]]?.height ?? 0) + gap }
+        return from < lift.slot ? travel : -travel
     }
 
     func drop() {
@@ -653,27 +730,123 @@ final class Store: ObservableObject {
         }
     }
 
+    func graze(_ point: CGPoint?) {
+        guard lift == nil, tug == nil, carrying == nil, held == nil, editing == nil,
+              !(Panel.main?.firstResponder is NSTextView)
+        else { return }
+        guard let point else {
+            spot = nil
+            mark = nil
+            wait(0.26)
+            return
+        }
+        spot = point
+        if let mark, hypot(point.x - mark.x, point.y - mark.y) < 2 { return }
+        mark = point
+        wait(0.18)
+    }
+
+    func mute(_ leaf: Leaf) {
+        calm()
+        muted = leaf
+        peek.remove(leaf)
+    }
+
+    func toss(_ leaf: Leaf) {
+        if case .task(let id) = leaf {
+            guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+            if items[index].folded, peek.contains(leaf) {
+                items[index].folded = false
+                return
+            }
+            let next = !items[index].folded
+            if next { mute(leaf) }
+            withAnimation(Style.fold(items[index].folded)) { items[index].folded = next }
+            return
+        }
+        guard let key = key(leaf) else { return }
+        let folded = UserDefaults.standard.bool(forKey: key)
+        if folded, peek.contains(leaf) {
+            UserDefaults.standard.set(false, forKey: key)
+            return
+        }
+        if !folded { mute(leaf) }
+        withAnimation(Style.fold(folded)) { UserDefaults.standard.set(!folded, forKey: key) }
+    }
+
+    private func key(_ leaf: Leaf) -> String? {
+        switch leaf {
+        case .task: nil
+        case .desk(let id): spaces.first { $0.id == id }.map { "folded." + ($0 == home ? "home" : $0.uuid) }
+        case .unsorted(let agent): "folded.agent." + agent.rawValue
+        case .upcoming: "folded.upcoming"
+        }
+    }
+
+    private func wait(_ delay: TimeInterval) {
+        calm()
+        dwell = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            dwell = nil
+            settle()
+        }
+    }
+
+    private func settle() {
+        let hit = spot.flatMap(leaf(at:))
+        if hit != muted { muted = nil }
+        guard let hit else {
+            if !peek.isEmpty { peek = [] }
+            return
+        }
+        guard hit != muted, !peek.contains(hit), let top = leaves[hit]?.minY else { return }
+        peek = peek.filter { (leaves[$0]?.minY ?? .infinity) < top }.union([hit])
+    }
+
+    private func leaf(at point: CGPoint) -> Leaf? {
+        leaves.filter { $0.value.contains(point) }.min { $0.value.height < $1.value.height }?.key
+    }
+
+    private func calm() {
+        dwell?.cancel()
+        dwell = nil
+    }
+
+    private func card(at point: CGPoint) -> UUID? {
+        cards.filter { $0.value.contains(point) }.min { $0.value.height < $1.value.height }?.key
+    }
+
+    private func mind() {
+        guard editing == nil, !(Panel.main?.firstResponder is NSTextView) else { return }
+        let id = items.first { space(for: $0)?.id == current }?.id
+        var next = items
+        for index in next.indices where next[index].folded != (next[index].id != id) {
+            next[index].folded = next[index].id != id
+        }
+        var marks = ["folded.upcoming": true]
+        for agent in Agent.allCases { marks["folded.agent." + agent.rawValue] = true }
+        for space in loose + (home.map { [$0] } ?? []) {
+            guard let key = key(.desk(space.id)) else { continue }
+            marks[key] = !(id == nil && space.id == current)
+        }
+        let defaults = UserDefaults.standard
+        marks = marks.filter { defaults.bool(forKey: $0.key) != $0.value }
+        guard next != items || !marks.isEmpty else { return }
+        calm()
+        peek = []
+        if next != items { items = next }
+        for (key, value) in marks { defaults.set(value, forKey: key) }
+    }
+
     func fold(at point: CGPoint) -> Bool {
         if let id = shelves.first(where: { $0.value.contains(point) })?.key,
            let index = items.firstIndex(where: { $0.id == id }), !items[index].todos.isEmpty {
             withAnimation(Style.fold(items[index].shelved)) { items[index].shelved.toggle() }
             return true
         }
-        if let id = cards.filter({ $0.value.contains(point) }).min(by: { $0.value.height < $1.value.height })?.key,
-           let index = items.firstIndex(where: { $0.id == id }) {
-            withAnimation(Style.fold(items[index].folded)) { items[index].folded.toggle() }
-            return true
-        }
-        if let agent = inboxes.first(where: { $0.value.contains(point) })?.key {
-            let key = "folded.agent." + agent.rawValue
-            let folded = UserDefaults.standard.bool(forKey: key)
-            withAnimation(Style.fold(folded)) { UserDefaults.standard.set(!folded, forKey: key) }
-            return true
-        }
-        guard let id = zone(at: point), let space = desktops.first(where: { $0.id == id }) else { return false }
-        let key = "folded." + (space == home ? "home" : space.uuid)
-        let folded = UserDefaults.standard.bool(forKey: key)
-        withAnimation(Style.fold(folded)) { UserDefaults.standard.set(!folded, forKey: key) }
+        guard let leaf = leaf(at: point) else { return false }
+        toss(leaf)
         return true
     }
 
@@ -741,7 +914,10 @@ final class Store: ObservableObject {
         }
         if spaces != self.spaces { self.spaces = spaces }
         if windows != self.windows { self.windows = windows }
-        if current != self.current { self.current = current }
+        if current != self.current {
+            self.current = current
+            mind()
+        }
     }
 
     func tell(_ message: String) {

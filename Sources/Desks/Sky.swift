@@ -30,6 +30,8 @@ enum Sky {
     private typealias Assign = @convention(c) (Int32, pid_t, UInt64) -> Int32
     private typealias Front = @convention(c) (UnsafeMutableRawPointer, UInt32, UInt32) -> Int32
     private typealias Record = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<UInt8>) -> Int32
+    private typealias Pin = @convention(c) (Int32, CFArray, UInt64) -> Void
+    private typealias Holders = @convention(c) (Int32, Int32, CFArray) -> UnsafeRawPointer?
 
     private static let library = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
 
@@ -52,6 +54,8 @@ enum Sky {
     private static let process = load("SLSProcessAssignToSpace", as: Assign.self)
     private static let front = load("_SLPSSetFrontProcessWithOptions", as: Front.self)
     private static let record = load("SLPSPostEventRecordTo", as: Record.self)
+    private static let managed = load("SLSMoveWindowsToManagedSpace", as: Pin.self)
+    private static let holders = load("SLSCopySpacesForWindows", as: Holders.self)
 
     private static let connection = main()
 
@@ -81,6 +85,17 @@ enum Sky {
 
     static func current() -> UInt64 {
         active(connection)
+    }
+
+    static func pin(_ window: UInt32, to space: UInt64) {
+        managed(connection, [NSNumber(value: window)] as CFArray, space)
+    }
+
+    static func spaces(of window: UInt32) -> [UInt64] {
+        guard let raw = holders(connection, 7, [NSNumber(value: window)] as CFArray),
+              let list = Unmanaged<CFArray>.fromOpaque(raw).takeRetainedValue() as? [NSNumber]
+        else { return [] }
+        return list.map(\.uint64Value)
     }
 
     static func focus(_ window: UInt32, of psn: inout ProcessSerialNumber) {

@@ -25,7 +25,7 @@ Press <code>⌘↩</code> instead of <code>↩</code> to save a task for later w
 <td width="50%" valign="top">
 <img src="docs/todos.gif" alt="Writing a description, adding and checking off to-dos, and tucking the list away"><br>
 <b>Descriptions and to-dos</b><br>
-Jot down what the task is about and keep a checklist. <code>↩</code> adds a to-do or moves to the next one, <code>↑</code>/<code>↓</code> move between them, and <code>⌘↩</code> checks or unchecks one and moves on. Click <b>To-dos</b> to tuck a long list away; collapsed tasks and lists show how many are done.
+Jot down what the task is about and keep a checklist that edits like a list: <code>↩</code> adds a to-do or splits one at the cursor, <code>↩</code> on an empty one ends the list, and <code>⌫</code> at the start of a to-do joins it to the one above. <code>↑</code>/<code>↓</code> move between them, <code>⌘↩</code> checks or unchecks one and moves on, and dragging a to-do by its circle reorders it. Done to-dos gather under the list behind a count; click <b>To-dos</b> to tuck the whole list away, and collapsed tasks and lists show how many are done.
 </td>
 <td width="50%" valign="top">
 <img src="docs/windows.gif" alt="Expanding a task and clicking its windows to jump to them"><br>
@@ -37,7 +37,7 @@ See which windows sit on each task's desktop and click one to jump to it.
 <td width="50%" valign="top">
 <img src="docs/switch.gif" alt="Switching tasks by clicking and with Control-number shortcuts"><br>
 <b>Switch fast</b><br>
-Click a task, or use the macOS <code>⌃1</code>–<code>⌃9</code> desktop shortcuts shown on each task.
+Click a task, or use the macOS <code>⌃1</code>–<code>⌃9</code> desktop shortcuts shown on each task. Once a switch settles, the desktop's number and task drop out of the notch for a moment, or out of a small tab under the menu bar on a screen without one.
 </td>
 <td width="50%" valign="top">
 <img src="docs/organize.gif" alt="Reordering tasks by dragging, renaming one, and scrolling a long name"><br>
@@ -66,7 +66,7 @@ Desktops on every screen are listed and switched correctly. Move a task to anoth
 <td width="50%" valign="top">
 <img src="docs/away.gif" alt="Folding the panel, snapping it back to the corner, and stepping below a notification"><br>
 <b>Stays out of the way</b><br>
-Tasks collapse to a single line with app icons, the panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
+The task on your current desktop stays open and the rest collapse to a single line with app icons. Rest the pointer on a collapsed task, desktop or list to peek inside it, and click its chevron to keep it open. A task lists its three most recent conversations until you ask for more. The panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
 </td>
 </tr>
 <tr>

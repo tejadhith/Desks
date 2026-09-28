@@ -79,19 +79,18 @@ struct Inbox: View {
 
     private var chats: [Chat] { store.inbox(agent) }
     private var targeted: Bool { store.aim == .inbox(agent) }
+    private var closed: Bool { folded && !store.peek.contains(.unsorted(agent)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Button {
-                    withAnimation(Style.fold(folded)) { folded.toggle() }
-                } label: {
+                Button(action: toss) {
                     HStack(spacing: 8) {
                         Image(agent: agent)
                             .resizable()
                             .frame(width: 22, height: 22)
                             .frame(width: 26, height: 18)
-                        Text(folded ? agent.name : "\(agent.name) · unsorted")
+                        Text(closed ? agent.name : "\(agent.name) · unsorted")
                             .font(.grotesk(12, .medium))
                             .lineLimit(1)
                             .opacity(0.7)
@@ -99,7 +98,7 @@ struct Inbox: View {
                             .font(.grotesk(11, .medium))
                             .monospacedDigit()
                             .opacity(0.5)
-                        if folded, let status = Status.urgent(chats.compactMap { store.beats[$0.id]?.status }) {
+                        if closed, let status = Status.urgent(chats.compactMap { store.beats[$0.id]?.status }) {
                             Dot(status: status)
                         }
                         Spacer(minLength: 0)
@@ -108,16 +107,14 @@ struct Inbox: View {
                 }
                 .buttonStyle(.plain)
                 .help("Conversations in \(agent.name) not linked to a task · drag one onto a task")
-                Button {
-                    withAnimation(Style.fold(folded)) { folded.toggle() }
-                } label: {
-                    Image(systemName: folded ? "chevron.down" : "chevron.up")
+                Button(action: toss) {
+                    Image(systemName: closed ? "chevron.down" : "chevron.up")
                 }
                 .buttonStyle(Glyph())
                 .opacity(0.8)
-                .help(folded ? "Expand" : "Collapse")
+                .help(folded && !closed ? "Keep expanded" : folded ? "Expand" : "Collapse")
             }
-            if !folded && !chats.isEmpty {
+            if !closed && !chats.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(chats) { Talk(chat: $0, item: nil) }
                 }
@@ -125,12 +122,17 @@ struct Inbox: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, folded || chats.isEmpty ? 6 : 10)
+        .padding(.vertical, closed || chats.isEmpty ? 6 : 10)
         .background(targeted ? Color.mist : .clear)
         .overlay {
             if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
         }
         .inbox(agent, in: store)
+        .leaf(.unsorted(agent), in: store)
+    }
+
+    private func toss() {
+        store.toss(.unsorted(agent))
     }
 }
 

@@ -63,6 +63,11 @@ enum Hooks {
     dir="$HOME/Library/Application Support/Desks/events"
     mkdir -p "$dir"
     name=$(printf '%s.%s' "$agent" "$session" | tr -c 'A-Za-z0-9_.-' '_')
+    case "$event" in
+        SessionStart|sessionStart|SessionEnd)
+            [ -f "$dir/$name.json" ] && exit 0
+            ;;
+    esac
     printf '{"agent":"%s","session":"%s","event":"%s","cwd":"%s","tool":"%s","time":%s}\n' "$agent" "$session" "$event" "$cwd" "$tool" "$(date +%s)" > "$dir/.$name.$$" && mv -f "$dir/.$name.$$" "$dir/$name.json"
     exit 0
 

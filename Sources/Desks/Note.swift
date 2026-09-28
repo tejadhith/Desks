@@ -6,6 +6,8 @@ struct Note: View {
     @FocusState private var typing: Bool
     @AppStorage("folded.upcoming") private var folded = false
 
+    private var closed: Bool { folded && !store.peek.contains(.upcoming) }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -75,7 +77,7 @@ struct Note: View {
             if !store.upcoming.isEmpty {
                 line
                 upcoming
-                if !folded {
+                if !closed {
                     ForEach($store.items) { $item in
                         if !store.started(item) {
                             VStack(spacing: 0) {
@@ -94,6 +96,12 @@ struct Note: View {
                 .onAppear { store.height = proxy.size.height }
                 .onChange(of: proxy.size.height) { _, height in store.height = height }
         })
+        .onContinuousHover(coordinateSpace: .named(Style.space)) { phase in
+            switch phase {
+            case .active(let point): store.graze(point)
+            case .ended: store.graze(nil)
+            }
+        }
     }
 
     private var header: some View {
@@ -185,9 +193,7 @@ struct Note: View {
 
     private var upcoming: some View {
         HStack(spacing: 8) {
-            Button {
-                withAnimation(Style.fold(folded)) { folded.toggle() }
-            } label: {
+            Button(action: toss) {
                 HStack(spacing: 8) {
                     Text("Upcoming")
                         .font(.grotesk(12, .medium))
@@ -201,18 +207,21 @@ struct Note: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Button {
-                withAnimation(Style.fold(folded)) { folded.toggle() }
-            } label: {
-                Image(systemName: folded ? "chevron.down" : "chevron.up")
+            Button(action: toss) {
+                Image(systemName: closed ? "chevron.down" : "chevron.up")
             }
             .buttonStyle(Glyph())
             .opacity(0.8)
-            .help(folded ? "Expand" : "Collapse")
+            .help(folded && store.peek.contains(.upcoming) ? "Keep expanded" : folded ? "Expand" : "Collapse")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color.deep.opacity(0.35))
+        .leaf(.upcoming, in: store)
+    }
+
+    private func toss() {
+        store.toss(.upcoming)
     }
 
     private var locked: some View {
@@ -295,10 +304,11 @@ private struct Loose: View {
 
     private var windows: [Sky.Window] { store.windows(on: space) }
     private var targeted: Bool { store.hovered == space.id }
+    private var closed: Bool { folded && !store.peek.contains(.desk(space.id)) }
 
     private var label: String {
         let kind = home ? "unsorted" : "not a task"
-        return folded ? kind.prefix(1).uppercased() + kind.dropFirst() : "Desktop \(space.number ?? 0) · \(kind)"
+        return closed ? kind.prefix(1).uppercased() + kind.dropFirst() : "Desktop \(space.number ?? 0) · \(kind)"
     }
 
     var body: some View {
@@ -313,7 +323,7 @@ private struct Loose: View {
                             .font(.grotesk(12, .medium))
                             .lineLimit(1)
                             .opacity(0.7)
-                        if folded { Apps(windows: windows) }
+                        if closed { Apps(windows: windows) }
                         Spacer(minLength: 0)
                     }
                     .contentShape(Rectangle())
@@ -330,15 +340,15 @@ private struct Loose: View {
                     .help("Turn this desktop into a task")
                 }
                 Button {
-                    withAnimation(Style.fold(folded)) { folded.toggle() }
+                    store.toss(.desk(space.id))
                 } label: {
-                    Image(systemName: folded ? "chevron.down" : "chevron.up")
+                    Image(systemName: closed ? "chevron.down" : "chevron.up")
                 }
                 .buttonStyle(Glyph())
                 .opacity(0.8)
-                .help(folded ? "Expand" : "Collapse")
+                .help(folded && !closed ? "Keep expanded" : folded ? "Expand" : "Collapse")
             }
-            if !folded {
+            if !closed {
                 VStack(spacing: 0) {
                     ForEach(windows) { Row(window: $0) }
                 }
@@ -346,12 +356,13 @@ private struct Loose: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, folded ? 6 : 10)
+        .padding(.vertical, closed ? 6 : 10)
         .background(targeted ? Color.mist : .clear)
         .overlay {
             if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
         }
         .zone(space.id, in: store)
+        .leaf(.desk(space.id), in: store)
         .contextMenu {
             if !home {
                 Button("Remove Desktop", role: .destructive) { store.remove(space) }
