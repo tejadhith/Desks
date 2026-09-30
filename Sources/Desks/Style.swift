@@ -4,6 +4,12 @@ enum Style {
     static let header: CGFloat = 44
     static let indent: CGFloat = 34
     static let space = "note"
+    static let mark: NSImage? = {
+        let image = Bundle.main.url(forResource: "Status", withExtension: "pdf").flatMap(NSImage.init(contentsOf:))
+        image?.isTemplate = true
+        image?.accessibilityDescription = "Desks"
+        return image
+    }()
 
     static func fold(_ folded: Bool) -> Animation? {
         folded ? nil : .easeInOut(duration: 0.15)

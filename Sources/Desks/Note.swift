@@ -106,8 +106,12 @@ struct Note: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "note.text")
-                .font(.grotesk(13, .semibold))
+            if let mark = Style.mark {
+                Image(nsImage: mark)
+                    .renderingMode(.template)
+                    .resizable()
+                    .frame(width: 15.6, height: 11.5)
+            }
             Text("Tasks")
                 .font(.grotesk(13, .semibold))
             Text("\(store.items.count)")

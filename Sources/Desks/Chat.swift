@@ -161,6 +161,7 @@ struct Beat: Equatable {
     let status: Status
     let cwd: String
     let tool: String
+    let prompt: Date?
     let time: Date
 
     var id: String { agent.rawValue + ":" + session }

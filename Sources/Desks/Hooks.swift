@@ -68,7 +68,13 @@ enum Hooks {
             [ -f "$dir/$name.json" ] && exit 0
             ;;
     esac
-    printf '{"agent":"%s","session":"%s","event":"%s","cwd":"%s","tool":"%s","time":%s}\n' "$agent" "$session" "$event" "$cwd" "$tool" "$(date +%s)" > "$dir/.$name.$$" && mv -f "$dir/.$name.$$" "$dir/$name.json"
+    now=$(date +%s)
+    case "$event" in
+        UserPromptSubmit|userPromptSubmitted) prompt=$now ;;
+        *) prompt=$(/usr/bin/plutil -extract prompt raw -o - "$dir/$name.json" 2>/dev/null) ;;
+    esac
+    [ -n "$prompt" ] || prompt=0
+    printf '{"agent":"%s","session":"%s","event":"%s","cwd":"%s","tool":"%s","prompt":%s,"time":%s}\n' "$agent" "$session" "$event" "$cwd" "$tool" "$prompt" "$now" > "$dir/.$name.$$" && mv -f "$dir/.$name.$$" "$dir/$name.json"
     exit 0
 
     """#
@@ -168,7 +174,8 @@ enum Hooks {
                 try? manager.removeItem(at: file)
                 return nil
             }
-            return Beat(agent: agent, session: session, status: Status(json["event"] as? String ?? ""), cwd: json["cwd"] as? String ?? "", tool: json["tool"] as? String ?? "", time: time)
+            let prompt = (json["prompt"] as? Double).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil }
+            return Beat(agent: agent, session: session, status: Status(json["event"] as? String ?? ""), cwd: json["cwd"] as? String ?? "", tool: json["tool"] as? String ?? "", prompt: prompt, time: time)
         }
     }
 

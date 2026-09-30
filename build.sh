@@ -13,6 +13,7 @@ cp .build/release/Desks "$CONTENTS/MacOS/Desks"
 cp Resources/Info.plist "$CONTENTS/Info.plist"
 mkdir -p "$CONTENTS/Resources"
 cp -R Resources/Fonts "$CONTENTS/Resources/Fonts"
+cp Resources/Status.pdf "$CONTENTS/Resources/"
 IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ { print $2; exit }')}"
 codesign --force --sign "${IDENTITY:--}" "$APP"
 

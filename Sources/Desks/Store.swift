@@ -66,6 +66,7 @@ final class Store: ObservableObject {
     private var looked: [String: Date] = [:]
     private var sifted: [String: Date] = [:]
     private var sorting = false
+    private var known: Set<UUID>?
     var snap: () -> Void = {}
 
     private let url: URL
@@ -1087,19 +1088,37 @@ final class Store: ObservableObject {
         return bits.joined(separator: " - ")
     }
 
+    private func renew() {
+        let ids = Set(items.flatMap { item in [item.id] + item.todos.filter { !$0.text.isEmpty }.map(\.id) })
+        guard let known else {
+            self.known = ids
+            return
+        }
+        guard !ids.isSubset(of: known), editing == nil,
+              !(Panel.main?.isKeyWindow == true && Panel.main?.firstResponder is NSTextView) else { return }
+        self.known = known.union(ids)
+        sifted.removeAll()
+    }
+
     private func sift() {
+        renew()
         guard !sorting, Hooks.connected, !items.isEmpty else { return }
-        let cutoff = Date().addingTimeInterval(-86400)
+        let now = Date()
+        let cutoff = now.addingTimeInterval(-86400)
         let taken = linked
         let waiting = beats.values
             .filter { !taken.contains($0.id) && !hidden.contains($0.id) && latest($0) > cutoff }
-            .filter { beat in sifted[beat.id].map { beat.time > $0 } ?? true }
+            .filter { beat in
+                if let prompt = beat.prompt, now.timeIntervalSince(prompt) < 3 { return false }
+                guard let last = sifted[beat.id] else { return true }
+                return (beat.prompt ?? .distantPast) > last
+            }
             .sorted { latest($0) > latest($1) }
         guard let beat = waiting.first else { return }
         let chat = Chat(agent: beat.agent, session: beat.session, title: named[beat.id] ?? "")
         let tasks = items.filter { !$0.refused.contains(chat.id) }.map { (id: $0.id, text: brief($0)) }
         guard !tasks.isEmpty else { return }
-        sifted[chat.id] = Date()
+        sifted[chat.id] = beat.prompt ?? .distantPast
         sorting = true
         let title = chat.title
         let cwd = beat.cwd
