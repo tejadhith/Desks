@@ -4,6 +4,7 @@ private let erase = KeyEquivalent("\u{7F}")
 
 struct Card: View {
     @EnvironmentObject var store: Store
+    @Environment(\.aside) private var aside
     @Binding var item: Item
     @State private var hover = false
     @State private var entry = ""
@@ -24,7 +25,7 @@ struct Card: View {
     private var targeted: Bool { (space != nil && store.hovered == space?.id) || store.aim == .card(item.id) }
     private var windows: [Sky.Window] { space.map(store.windows(on:)) ?? [] }
     private var lifted: Bool { store.lift?.id == item.id }
-    private var folded: Bool { item.folded && !store.peek.contains(.task(item.id)) }
+    private var folded: Bool { !aside && item.folded && !store.peek.contains(.task(item.id)) }
     private var pinning: Bool { item.folded && store.peek.contains(.task(item.id)) }
     private var label: String { pinning ? "Keep expanded" : item.folded ? "Expand" : "Collapse" }
     private static let cap = 3
@@ -52,12 +53,15 @@ struct Card: View {
                             Badge(label: space?.number.map(String.init) ?? "–", active: active)
                             Ticker(text: item.title.isEmpty ? "Untitled" : item.title, rolling: hover && store.lift == nil)
                                 .opacity(item.title.isEmpty ? 0.7 : 1)
-                            if folded {
-                                tally
-                                Apps(windows: windows)
-                                if let status = Status.urgent(item.chats.compactMap { store.beats[$0.id]?.status }) {
-                                    Dot(status: status)
+                            if folded && !store.moving(.task(item.id)) {
+                                Group {
+                                    tally
+                                    Apps(windows: windows)
+                                    if let status = Status.urgent(item.chats.compactMap { store.beats[$0.id]?.status }) {
+                                        Dot(status: status)
+                                    }
                                 }
+                                .transition(Store.blink)
                             }
                             Spacer(minLength: 0)
                         }
@@ -102,7 +106,8 @@ struct Card: View {
                 .buttonStyle(Glyph())
                 .opacity(hover || active ? 1 : 0.35)
                 Button(action: toss) {
-                    Image(systemName: folded ? "chevron.down" : "chevron.up")
+                    Image(systemName: "chevron.down")
+                        .rotationEffect(.degrees(folded ? 0 : 180))
                 }
                 .buttonStyle(Glyph())
                 .opacity(0.8)
@@ -110,13 +115,18 @@ struct Card: View {
             }
             .font(.grotesk(13, .semibold))
             .frame(minHeight: 22)
+            .contentTransition(.identity)
 
-            if !folded { details }
+            if !folded {
+                Group { details }
+                    .transition(store.rise(.task(item.id)))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, folded ? 6 : 10)
         .background(targeted ? Color.mist : active ? Color.wash : .clear)
         .background(lifted ? Color.paper : .clear)
+        .clipped()
         .shadow(color: .black.opacity(lifted ? 0.3 : 0), radius: 8, y: 2)
         .overlay {
             if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }

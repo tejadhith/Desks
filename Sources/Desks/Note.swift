@@ -13,11 +13,16 @@ struct Note: View {
             header
             if !store.collapsed {
                 if store.overflow {
-                    ScrollView { list }
-                        .scrollIndicators(.never)
-                        .frame(height: store.limit)
+                    ScrollViewReader { proxy in
+                        ScrollView { list }
+                            .scrollIndicators(.never)
+                            .frame(height: store.limit)
+                            .onAppear { reveal(proxy) }
+                            .onChange(of: store.reveal) { reveal(proxy) }
+                    }
                 } else {
                     list
+                        .onChange(of: store.reveal) { reveal(nil) }
                 }
             }
         }
@@ -85,6 +90,7 @@ struct Note: View {
                                 Card(item: $item)
                             }
                             .slide(item.id, in: store)
+                            .transition(store.rise(.upcoming))
                         }
                     }
                 }
@@ -212,7 +218,8 @@ struct Note: View {
             }
             .buttonStyle(.plain)
             Button(action: toss) {
-                Image(systemName: closed ? "chevron.down" : "chevron.up")
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(closed ? 0 : 180))
             }
             .buttonStyle(Glyph())
             .opacity(0.8)
@@ -279,6 +286,15 @@ struct Note: View {
             .frame(height: 1)
     }
 
+    private func reveal(_ proxy: ScrollViewProxy?) {
+        DispatchQueue.main.async {
+            guard let leaf = store.reveal, proxy != nil || !store.overflow else { return }
+            store.reveal = nil
+            guard let proxy, let (id, anchor) = store.scroll(to: leaf) else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(id, anchor: anchor) }
+        }
+    }
+
     private func begin() {
         draft = ""
         Panel.focus()
@@ -294,8 +310,9 @@ struct Note: View {
     }
 }
 
-private struct Loose: View {
+struct Loose: View {
     @EnvironmentObject var store: Store
+    @Environment(\.aside) private var aside
     let space: Sky.Space
     let home: Bool
     @AppStorage private var folded: Bool
@@ -308,7 +325,7 @@ private struct Loose: View {
 
     private var windows: [Sky.Window] { store.windows(on: space) }
     private var targeted: Bool { store.hovered == space.id }
-    private var closed: Bool { folded && !store.peek.contains(.desk(space.id)) }
+    private var closed: Bool { !aside && folded && !store.peek.contains(.desk(space.id)) }
 
     private var label: String {
         let kind = home ? "unsorted" : "not a task"
@@ -327,7 +344,11 @@ private struct Loose: View {
                             .font(.grotesk(12, .medium))
                             .lineLimit(1)
                             .opacity(0.7)
-                        if closed { Apps(windows: windows) }
+                            .contentTransition(.identity)
+                        if closed && !store.moving(.desk(space.id)) {
+                            Apps(windows: windows)
+                                .transition(Store.blink)
+                        }
                         Spacer(minLength: 0)
                     }
                     .contentShape(Rectangle())
@@ -346,7 +367,8 @@ private struct Loose: View {
                 Button {
                     store.toss(.desk(space.id))
                 } label: {
-                    Image(systemName: closed ? "chevron.down" : "chevron.up")
+                    Image(systemName: "chevron.down")
+                        .rotationEffect(.degrees(closed ? 0 : 180))
                 }
                 .buttonStyle(Glyph())
                 .opacity(0.8)
@@ -357,11 +379,13 @@ private struct Loose: View {
                     ForEach(windows) { Row(window: $0) }
                 }
                 .padding(.leading, Style.indent - 6)
+                .transition(store.rise(.desk(space.id)))
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, closed ? 6 : 10)
         .background(targeted ? Color.mist : .clear)
+        .clipped()
         .overlay {
             if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
         }

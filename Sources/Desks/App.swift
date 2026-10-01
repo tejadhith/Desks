@@ -140,14 +140,23 @@ final class Delegate: NSObject, NSApplicationDelegate {
         let room = screen.height - 32
         let limit = room - Style.header
         if store.limit != limit { store.limit = limit }
-        let overflow = content > limit
+        let until = store.sinking.flatMap { $0 > Date() ? $0 : nil }
+        if let until {
+            DispatchQueue.main.asyncAfter(deadline: .now() + until.timeIntervalSinceNow + 0.02) { [weak self] in
+                guard let self else { return }
+                self.fit(self.store.height, self.store.collapsed)
+            }
+        }
+        let overflow = until == nil ? content > limit : store.overflow
         if store.overflow != overflow { store.overflow = overflow }
         let height = collapsed ? Style.header : min(Style.header + content, room)
+        if height < panel.frame.height - 0.5, until != nil { return }
         guard abs(panel.frame.height - height) > 0.5 else { return }
         var frame = panel.frame
         frame.origin.y = frame.maxY - height
         frame.size.height = height
         panel.setFrame(frame, display: false)
+        DispatchQueue.main.async { [weak self] in self?.panel.invalidateShadow() }
     }
 
     private func press() {

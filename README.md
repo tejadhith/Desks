@@ -66,7 +66,7 @@ Desktops on every screen are listed and switched correctly. Move a task to anoth
 <td width="50%" valign="top">
 <img src="docs/away.webp" alt="Folding the panel, snapping it back to the corner, and stepping below a notification"><br>
 <b>Stays out of the way</b><br>
-The task on your current desktop stays open and the rest collapse to a single line with app icons. Rest the pointer on a collapsed task, desktop or list to peek inside it, and click its chevron to keep it open. A task lists its three most recent conversations until you ask for more. The panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
+The task on your current desktop stays open and the rest collapse to a single line with app icons. Rest the pointer on a collapsed task, desktop or list to peek inside it; the others fold, and the pointer moves with your row so it stays under it. Click its chevron to keep it open. A task lists its three most recent conversations until you ask for more. The panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
 </td>
 </tr>
 <tr>

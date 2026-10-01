@@ -69,6 +69,7 @@ struct Talk: View {
 
 struct Inbox: View {
     @EnvironmentObject var store: Store
+    @Environment(\.aside) private var aside
     let agent: Agent
     @AppStorage private var folded: Bool
 
@@ -79,7 +80,7 @@ struct Inbox: View {
 
     private var chats: [Chat] { store.inbox(agent) }
     private var targeted: Bool { store.aim == .inbox(agent) }
-    private var closed: Bool { folded && !store.peek.contains(.unsorted(agent)) }
+    private var closed: Bool { !aside && folded && !store.peek.contains(.unsorted(agent)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -91,6 +92,7 @@ struct Inbox: View {
                             .frame(width: 22, height: 22)
                             .frame(width: 26, height: 18)
                         Text(closed ? agent.name : "\(agent.name) · unsorted")
+                            .contentTransition(.identity)
                             .font(.grotesk(12, .medium))
                             .lineLimit(1)
                             .opacity(0.7)
@@ -98,8 +100,9 @@ struct Inbox: View {
                             .font(.grotesk(11, .medium))
                             .monospacedDigit()
                             .opacity(0.5)
-                        if closed, let status = Status.urgent(chats.compactMap { store.beats[$0.id]?.status }) {
+                        if closed, !store.moving(.unsorted(agent)), let status = Status.urgent(chats.compactMap { store.beats[$0.id]?.status }) {
                             Dot(status: status)
+                                .transition(Store.blink)
                         }
                         Spacer(minLength: 0)
                     }
@@ -108,7 +111,8 @@ struct Inbox: View {
                 .buttonStyle(.plain)
                 .help("Conversations in \(agent.name) not linked to a task · drag one onto a task")
                 Button(action: toss) {
-                    Image(systemName: closed ? "chevron.down" : "chevron.up")
+                    Image(systemName: "chevron.down")
+                        .rotationEffect(.degrees(closed ? 0 : 180))
                 }
                 .buttonStyle(Glyph())
                 .opacity(0.8)
@@ -119,11 +123,13 @@ struct Inbox: View {
                     ForEach(chats) { Talk(chat: $0, item: nil) }
                 }
                 .padding(.leading, Style.indent - 6)
+                .transition(store.rise(.unsorted(agent)))
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, closed || chats.isEmpty ? 6 : 10)
         .background(targeted ? Color.mist : .clear)
+        .clipped()
         .overlay {
             if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
         }

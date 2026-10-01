@@ -102,7 +102,7 @@ enum Hooks {
 
     private static let claude = ["SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Notification", "Stop", "SessionEnd"]
     private static let devin = ["SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"]
-    private static let codex = ["SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"]
+    private static let codex = ["SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"]
     private static let copilot = ["sessionStart", "userPromptSubmitted", "postToolUse", "agentStop", "sessionEnd"]
 
     private static var targets: [(agent: Agent, file: URL, events: [String])] {

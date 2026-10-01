@@ -51,6 +51,7 @@ final class Away {
         placed = nil
         tucked = false
         revealed = false
+        clip(false)
         return false
     }
 
@@ -92,6 +93,8 @@ final class Away {
         if tucked && !revealed {
             let screen = screen(at: home)
             goal.x = right ? screen.maxX - tab : screen.minX - size.width + tab
+        } else {
+            clip(false)
         }
         if near(goal, home) {
             guard rest != nil else { return }
@@ -117,10 +120,31 @@ final class Away {
             panel.animator().setFrame(frame, display: true)
         } completionHandler: { [weak self] in
             MainActor.assumeIsolated {
-                self?.moving = false
+                guard let self else { return }
+                self.moving = false
+                if self.tucked, !self.revealed, self.near(self.top(self.panel.frame), point) { self.clip(true) }
                 done()
             }
         }
+    }
+
+    private func clip(_ on: Bool) {
+        guard let view = panel.contentView else { return }
+        view.wantsLayer = true
+        if on {
+            let frame = panel.frame
+            guard let display = NSScreen.screens.max(by: { $0.frame.intersection(frame).width < $1.frame.intersection(frame).width })?.frame else { return }
+            let shown = display.intersection(frame)
+            guard !shown.isNull else { return }
+            let mask = CALayer()
+            mask.backgroundColor = NSColor.black.cgColor
+            mask.frame = CGRect(x: shown.minX - frame.minX, y: 0, width: shown.width, height: display.height)
+            view.layer?.mask = mask
+        } else {
+            guard view.layer?.mask != nil else { return }
+            view.layer?.mask = nil
+        }
+        DispatchQueue.main.async { [weak self] in self?.panel.invalidateShadow() }
     }
 
     private func top(_ frame: NSRect) -> NSPoint {

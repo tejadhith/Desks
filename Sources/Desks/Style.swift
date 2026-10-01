@@ -51,6 +51,7 @@ extension View {
 
     func leaf(_ leaf: Leaf, in store: Store) -> some View {
         modifier(Spot(key: leaf) { store.place(leaf: $0, $1, by: $2) })
+            .id(leaf)
     }
 
     func inbox(_ agent: Agent, in store: Store) -> some View {
@@ -65,20 +66,36 @@ extension View {
 private struct Spot<Key: Hashable>: ViewModifier {
     let key: Key
     let place: (Key, CGRect?, UUID) -> Void
+    @Environment(\.aside) private var aside
     @State private var token = UUID()
 
     func body(content: Content) -> some View {
-        content.background(GeometryReader { proxy in
-            let frame = proxy.frame(in: .named(Style.space))
-            Color.clear
-                .onAppear { place(key, frame, token) }
-                .onChange(of: frame) { _, frame in place(key, frame, token) }
-                .onChange(of: key) { old, new in
-                    place(old, nil, token)
-                    place(new, frame, token)
+        content.background {
+            if !aside {
+                GeometryReader { proxy in
+                    let frame = proxy.frame(in: .named(Style.space))
+                    Color.clear
+                        .onAppear { place(key, frame, token) }
+                        .onChange(of: frame) { _, frame in place(key, frame, token) }
+                        .onChange(of: key) { old, new in
+                            place(old, nil, token)
+                            place(new, frame, token)
+                        }
+                        .onDisappear { place(key, nil, token) }
                 }
-                .onDisappear { place(key, nil, token) }
-        })
+            }
+        }
+    }
+}
+
+private struct Aside: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var aside: Bool {
+        get { self[Aside.self] }
+        set { self[Aside.self] = newValue }
     }
 }
 
