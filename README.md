@@ -49,7 +49,7 @@ Drag a task by its name to reorder it; the others slide out of the way. Double-c
 <td width="50%" valign="top">
 <img src="docs/move.webp" alt="Dragging a window by its title bar onto a task, dragging a window row, and using Send to"><br>
 <b>Move windows</b><br>
-Drag any window by its title bar onto a task in the panel, drag a window's row onto a task, right-click it and choose <b>Send to</b>, or send the front window to a task with one click. The window comes to the front on its new desktop and keeps its size and place, scaled to fit when it moves to another screen.
+Drag any window by its title bar onto a task in the panel, drag a window's row onto a task, right-click it and choose <b>Send to</b>, or send the front window to a task with one click. The window comes to the front on its new desktop and keeps its size and place, scaled to fit when it moves to another screen. In the app switcher, press <code>Space</code> before letting go of <code>⌘</code> to bring the highlighted app's window to the desktop you are on instead of going to it.
 </td>
 <td width="50%" valign="top">
 <img src="docs/agents.webp" alt="Linking an unsorted conversation to a task, opening it on the task&#x27;s desktop, and unlinking another"><br>
@@ -73,7 +73,7 @@ The task on your current desktop stays open and the rest collapse to a single li
 <td width="50%" valign="top">
 <img src="docs/gestures.webp" alt="Tucking the panel into the screen edge, seeing through it, and folding a task with Option"><br>
 <b>Gestures from anywhere</b><br>
-Double-tap <code>⌃</code> to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold <code>⌃</code> to see through it. Double-tap <code>⌥</code> to fold the to-dos or task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel.
+Double-tap <code>⌃</code> to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold <code>⌃</code> to see through it. Double-tap <code>⌥</code> to fold the to-dos or task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel. Choose <b>Appearance</b> from the Desks menu bar icon to switch between blue and clear Liquid Glass.
 </td>
 <td width="50%"></td>
 </tr>
@@ -81,7 +81,7 @@ Double-tap <code>⌃</code> to tuck the panel into the screen edge (hover the ed
 
 ## Requirements
 
-- macOS 14 or later (developed on macOS 26)
+- macOS 26 or later
 - Xcode or the Swift command line tools (Swift 5.9+)
 - Accessibility permission for Desks
 

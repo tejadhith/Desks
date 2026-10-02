@@ -128,11 +128,8 @@ struct Inbox: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, closed || chats.isEmpty ? 6 : 10)
-        .background(targeted ? Color.mist : .clear)
+        .plate(targeted ? .mist : .clear, ring: targeted)
         .clipped()
-        .overlay {
-            if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
-        }
         .inbox(agent, in: store)
         .leaf(.unsorted(agent), in: store)
     }
@@ -169,8 +166,10 @@ struct Dot: View {
 }
 
 private struct Spin: View {
+    @EnvironmentObject var store: Store
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: store.collapsed)) { context in
             let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
             ZStack {
                 Circle()

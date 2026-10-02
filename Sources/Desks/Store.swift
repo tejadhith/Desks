@@ -30,7 +30,12 @@ enum Leaf: Hashable {
 
 @MainActor
 final class Store: ObservableObject {
-    @Published var items: [Item] { didSet { save() } }
+    @Published var items: [Item] {
+        didSet {
+            save()
+            forget(oldValue)
+        }
+    }
     @Published private(set) var spaces: [Sky.Space] = []
     @Published private(set) var windows: [Sky.Window] = []
     @Published private(set) var current: UInt64 = 0
@@ -43,11 +48,16 @@ final class Store: ObservableObject {
     @Published var height: CGFloat = 0
     @Published var overflow = false
     @Published var limit: CGFloat = 600
+    var scrolled: CGFloat = 0
+    @Published private(set) var lead: CGFloat = 0
+    @Published private(set) var clock: Double = 0
     @Published private(set) var carrying: Sky.Window?
     @Published private(set) var pointer: CGPoint = .zero
     @Published private(set) var lift: Lift?
     @Published private(set) var tug: Lift?
     @Published private(set) var peek: Set<Leaf> = []
+    @Published var all: Set<UUID> = []
+    @Published var more: Set<UUID> = []
     @Published var reveal: Leaf?
     @Published private(set) var rises: [Leaf: CGFloat] = [:]
     private(set) var sinking: Date?
@@ -56,6 +66,8 @@ final class Store: ObservableObject {
     private var low: [Leaf: CGFloat] = [:]
     private var high: [Leaf: CGFloat] = [:]
     private var anchor: Anchor?
+    private var tried: Set<Leaf> = []
+    private var priming: Task<Void, Never>?
     private let glide = Glide()
     private var dwell: Task<Void, Never>?
     private var spot: CGPoint?
@@ -602,7 +614,7 @@ final class Store: ObservableObject {
         leaves[leaf] = frame
         guard let frame else { return }
         if shown(leaf) { high[leaf] = frame.height } else { low[leaf] = frame.height }
-        if let anchor, anchor.leaf == leaf, Date() < anchor.until, lift == nil, tug == nil {
+        if let anchor, anchor.leaf == leaf, Date() < anchor.until, lift == nil, tug == nil, !overflow {
             follow(frame.minY - anchor.y)
         }
     }
@@ -700,6 +712,8 @@ final class Store: ObservableObject {
     }
 
     func offset(for id: UUID) -> CGFloat { travel(lift, id, 1, free: true) }
+
+    func berth(for id: UUID) -> CGFloat { travel(lift, id, 1, free: false) }
 
     func shift(for id: UUID) -> CGFloat { travel(tug, id, 3, free: false) }
 
@@ -829,10 +843,11 @@ final class Store: ObservableObject {
     }
 
     private func settle() {
+        spot = cursor()
         let hit = spot.flatMap(leaf(at:))
         if hit != muted { muted = nil }
         guard let hit else {
-            if !peek.isEmpty { steady(nil, after: { !self.folded($0) }) { peek = [] } }
+            if !peek.isEmpty { steady(nil, after: { !self.folded($0) }) { self.peek = [] } }
             return
         }
         guard hit != muted, leaves[hit] != nil else { return }
@@ -842,7 +857,7 @@ final class Store: ObservableObject {
             buzz(.alignment)
             reveal = hit
         }
-        steady(hit, after: { !self.folded($0) || keep.contains($0) }) { peek = keep }
+        steady(hit, after: { !self.folded($0) || keep.contains($0) }) { self.peek = keep }
     }
 
     static let blink = AnyTransition.opacity.animation(.linear(duration: 0.05))
@@ -875,7 +890,7 @@ final class Store: ObservableObject {
         String(String(describing: leaf).prefix { $0 != "(" })
     }
 
-    private func measure(_ leaf: Leaf) -> CGFloat? {
+    private func measure(_ leaf: Leaf, fewer: Bool = false, tidy: Bool = false) -> CGFloat? {
         let view: AnyView
         switch leaf {
         case .task(let id):
@@ -893,51 +908,90 @@ final class Store: ObservableObject {
             .frame(width: Panel.main?.frame.width ?? 300)
             .fixedSize(horizontal: false, vertical: true)
             .environment(\.aside, true)
+            .environment(\.fewer, fewer)
+            .environment(\.tidy, tidy)
             .environmentObject(self))
         let height = host.fittingSize.height
         guard height > 0 else { return nil }
-        high[leaf] = height
+        if !fewer, !tidy { high[leaf] = height }
         return height
     }
 
-    private func steady(_ hit: Leaf?, after: (Leaf) -> Bool, _ change: () -> Void) {
-        let top = hit.flatMap { leaves[$0]?.minY } ?? -.infinity
+    func trim(_ id: UUID, done: Bool) {
+        let leaf = Leaf.task(id)
+        let open = done ? all.contains(id) : more.contains(id)
+        let flip = {
+            if done { self.all.formSymmetricDifference([id]) } else { self.more.formSymmetricDifference([id]) }
+        }
+        guard open, let frame = leaves[leaf], let size = measure(leaf, fewer: !done, tidy: done) else {
+            withAnimation(Style.fold(!open)) { flip() }
+            return
+        }
+        steady(nil, focus: cursor()?.y, resize: [leaf: size], drop: done ? 0 : frame.height - size, after: { self.shown($0) }, flip)
+    }
+
+    private func steady(_ hit: Leaf?, focus: CGFloat? = nil, resize: [Leaf: CGFloat] = [:], drop: CGFloat = 0, after: @escaping (Leaf) -> Bool, _ change: @escaping () -> Void) {
+        let top = focus ?? hit.flatMap { leaves[$0]?.minY } ?? -.infinity
         let frames = leaves
         let was = Set(frames.keys.filter(shown))
         var moves: [Leaf: CGFloat] = [:]
         var total: CGFloat = 0
-        var shrink: CGFloat = 0
+        var shrink = drop
         for (leaf, frame) in frames.sorted(by: { $0.value.minY < $1.value.minY }) {
+            if let size = resize[leaf] {
+                total += size - frame.height
+                continue
+            }
             let now = after(leaf)
             guard now != was.contains(leaf) else { continue }
             moves[leaf] = total
             if !now, frame.minY < top { shrink += max(0, frame.height - rest(leaf)) }
             total = now ? (high[leaf] ?? measure(leaf)).map { total + $0 - frame.height } ?? .nan : total + rest(leaf) - frame.height
         }
+        let next = height + (total.isNaN ? -shrink : total)
+        if overflow, scrolled > 0.5, next <= limit {
+            turn += 1
+            let mark = turn
+            sinking = Date().addingTimeInterval(1)
+            lead = scrolled
+            overflow = false
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.turn == mark else { return }
+                self.steady(hit, focus: focus, resize: resize, drop: drop, after: after, change)
+            }
+            return
+        }
         let duration = Glide.duration(for: shrink > 0 || total.isNaN ? shrink : total)
         sinking = Date().addingTimeInterval(duration + 0.05)
         turn += 1
         let mark = turn
         rises = moves
-        withAnimation(Glide.animation(duration)) { change() }
+        let held = lead
+        withAnimation(Glide.animation(duration)) {
+            change()
+            lead = 0
+            clock += 1
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) { [weak self] in
             guard let self, self.turn == mark else { return }
             self.rises = [:]
         }
-        guard let hit, top > -.infinity else { return }
-        anchor = Anchor(leaf: hit, y: top, until: Date().addingTimeInterval(0.5))
-        follow(-shrink, over: duration)
+        guard top > -.infinity else { return }
+        let give = overflow ? scrolled - max(0, min(scrolled, next - limit)) : held
+        anchor = hit.map { Anchor(leaf: $0, y: top, until: Date().addingTimeInterval(0.5)) }
+        follow(give - shrink, smooth: true)
     }
 
-    private func follow(_ drift: CGFloat, over duration: Double? = nil) {
-        guard abs(drift) > 0.5, var anchor,
-              let panel = Panel.main, panel.isVisible, panel.frame.contains(NSEvent.mouseLocation)
-        else { return }
-        glide.add(drift, over: duration)
+    func tick(_ value: Double) {
+        glide.tick(value)
+    }
+
+    private func follow(_ drift: CGFloat, smooth: Bool = false) {
+        guard abs(drift) > 0.5, let panel = Panel.main, panel.isVisible, panel.frame.contains(NSEvent.mouseLocation) else { return }
+        glide.add(drift, until: smooth ? clock : nil)
         spot?.y += drift
         mark?.y += drift
-        anchor.y += drift
-        self.anchor = anchor
+        anchor?.y += drift
     }
 
     func scroll(to leaf: Leaf) -> (Leaf, UnitPoint)? {
@@ -966,7 +1020,20 @@ final class Store: ObservableObject {
     }
 
     private func leaf(at point: CGPoint) -> Leaf? {
-        leaves.filter { $0.value.contains(point) }.min { $0.value.height < $1.value.height }?.key
+        for dy: CGFloat in [0, -1.5, 1.5] {
+            let probe = CGPoint(x: point.x, y: point.y + dy)
+            if let hit = leaves.filter({ $0.value.contains(probe) }).min(by: { $0.value.height < $1.value.height })?.key { return hit }
+        }
+        return nil
+    }
+
+    private func cursor() -> CGPoint? {
+        guard let panel = Panel.main, panel.isVisible, !collapsed else { return nil }
+        let mouse = NSEvent.mouseLocation
+        let point = CGPoint(x: mouse.x - panel.frame.minX, y: panel.frame.maxY - mouse.y)
+        let bottom = Style.header + min(overflow ? limit : height, panel.frame.height - Style.header)
+        guard point.x >= 0, point.x < panel.frame.width, point.y >= Style.header, point.y < bottom else { return nil }
+        return point
     }
 
     private func calm() {
@@ -1002,8 +1069,8 @@ final class Store: ObservableObject {
         }
         anchor = nil
         steady(nil, after: after) {
-            peek = []
-            if next != items { items = next }
+            self.peek = []
+            if next != self.items { self.items = next }
             for (key, value) in marks { defaults.set(value, forKey: key) }
         }
         reveal = id.map(Leaf.task) ?? .desk(current)
@@ -1169,6 +1236,7 @@ final class Store: ObservableObject {
             })
         }
         census()
+        prime()
         pulse = Task { [weak self] in
             while !Task.isCancelled {
                 self?.glance()
@@ -1186,6 +1254,43 @@ final class Store: ObservableObject {
                 self?.census()
                 await self?.listen()
                 try? await Task.sleep(for: .milliseconds(1500))
+            }
+        }
+    }
+
+    private func forget(_ old: [Item]) {
+        let before = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var changed = false
+        for item in items {
+            guard var was = before[item.id] else {
+                changed = true
+                continue
+            }
+            var now = item
+            was.folded = false
+            now.folded = false
+            guard was != now else { continue }
+            high[.task(item.id)] = nil
+            tried.remove(.task(item.id))
+            changed = true
+        }
+        if changed { prime() }
+    }
+
+    private func prime() {
+        priming?.cancel()
+        priming = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            while !Task.isCancelled {
+                guard let self else { return }
+                if dwell != nil || (sinking.map { $0 > Date() } ?? false) {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    continue
+                }
+                guard let leaf = items.lazy.map({ Leaf.task($0.id) }).first(where: { self.high[$0] == nil && !self.tried.contains($0) && self.leaves[$0] != nil && !self.shown($0) }) else { return }
+                tried.insert(leaf)
+                _ = measure(leaf)
+                try? await Task.sleep(for: .seconds(0.1))
             }
         }
     }

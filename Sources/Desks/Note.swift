@@ -5,13 +5,15 @@ struct Note: View {
     @State private var draft: String?
     @FocusState private var typing: Bool
     @AppStorage("folded.upcoming") private var folded = false
+    @AppStorage("glass") private var glass = "blue"
 
     private var closed: Bool { folded && !store.peek.contains(.upcoming) }
+    private var plain: Bool { glass == "clear" }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            if !store.collapsed {
+            VStack(spacing: 0) {
                 if store.overflow {
                     ScrollViewReader { proxy in
                         ScrollView { list }
@@ -22,9 +24,22 @@ struct Note: View {
                     }
                 } else {
                     list
+                        .offset(y: -store.lead)
+                        .frame(maxHeight: store.limit, alignment: .top)
+                        .clipped()
                         .onChange(of: store.reveal) { reveal(nil) }
                 }
             }
+            .onContinuousHover(coordinateSpace: .named(Style.space)) { phase in
+                switch phase {
+                case .active(let point): store.graze(point)
+                case .ended: store.graze(nil)
+                }
+            }
+            .frame(height: store.collapsed ? 0 : nil, alignment: .top)
+            .clipped()
+            .allowsHitTesting(!store.collapsed)
+            .accessibilityHidden(store.collapsed)
         }
         .fixedSize(horizontal: false, vertical: true)
         .coordinateSpace(name: Style.space)
@@ -45,12 +60,12 @@ struct Note: View {
             }
             .allowsHitTesting(false)
         }
-        .background(Color.paper)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.mist))
+        .clipShape(Style.shell)
+        .glassEffect(plain ? .regular : .regular.tint(Color.paper.opacity(0.7)), in: Style.shell)
         .foregroundStyle(Color.ink)
         .tint(Color.ink)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
+        .modifier(Clock(value: store.clock) { store.tick($0) })
     }
 
     private var list: some View {
@@ -62,9 +77,11 @@ struct Note: View {
                 if store.started(item) {
                     VStack(spacing: 0) {
                         Card(item: $item)
+                            .slide(item.id, in: store)
                         line
+                            .berth(item.id, in: store)
                     }
-                    .slide(item.id, in: store)
+                    .zIndex(store.lift?.id == item.id ? 1 : 0)
                 }
             }
             if store.items.isEmpty && draft == nil { empty }
@@ -87,9 +104,11 @@ struct Note: View {
                         if !store.started(item) {
                             VStack(spacing: 0) {
                                 line
+                                    .berth(item.id, in: store)
                                 Card(item: $item)
+                                    .slide(item.id, in: store)
                             }
-                            .slide(item.id, in: store)
+                            .zIndex(store.lift?.id == item.id ? 1 : 0)
                             .transition(store.rise(.upcoming))
                         }
                     }
@@ -99,15 +118,13 @@ struct Note: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(GeometryReader { proxy in
             Color.clear
-                .onAppear { store.height = proxy.size.height }
+                .onAppear {
+                    store.height = proxy.size.height
+                    store.scrolled = Style.header - proxy.frame(in: .named(Style.space)).minY
+                }
                 .onChange(of: proxy.size.height) { _, height in store.height = height }
+                .onChange(of: proxy.frame(in: .named(Style.space)).minY) { _, top in store.scrolled = Style.header - top }
         })
-        .onContinuousHover(coordinateSpace: .named(Style.space)) { phase in
-            switch phase {
-            case .active(let point): store.graze(point)
-            case .ended: store.graze(nil)
-            }
-        }
     }
 
     private var header: some View {
@@ -153,6 +170,7 @@ struct Note: View {
             Button(action: begin) {
                 Image(systemName: "plus")
             }
+            .buttonStyle(Glyph(fill: plain ? .paper : .clear))
             .disabled(store.busy || !store.trusted)
             .help("New task")
             Button {
@@ -166,7 +184,14 @@ struct Note: View {
         .padding(.horizontal, 12)
         .frame(height: Style.header)
         .background(Handle { store.collapsed.toggle() })
-        .background(Color.deep)
+        .overlay(alignment: .bottom) {
+            if !store.collapsed {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: 1)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     private var composer: some View {
@@ -198,7 +223,7 @@ struct Note: View {
         .buttonStyle(Glyph())
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
-        .background(Color.wash)
+        .plate(.wash)
     }
 
     private var upcoming: some View {
@@ -227,7 +252,6 @@ struct Note: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.deep.opacity(0.35))
         .leaf(.upcoming, in: store)
     }
 
@@ -251,7 +275,7 @@ struct Note: View {
         .font(.grotesk(12))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.wash)
+        .plate(.wash)
     }
 
     private func banner(_ text: String) -> some View {
@@ -265,7 +289,7 @@ struct Note: View {
         .font(.grotesk(12))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.wash)
+        .plate(.wash)
     }
 
     private var empty: some View {
@@ -282,8 +306,9 @@ struct Note: View {
 
     private var line: some View {
         Rectangle()
-            .fill(Color.mist)
+            .fill(Color(nsColor: .separatorColor))
             .frame(height: 1)
+            .padding(.horizontal, 12)
     }
 
     private func reveal(_ proxy: ScrollViewProxy?) {
@@ -384,11 +409,8 @@ struct Loose: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, closed ? 6 : 10)
-        .background(targeted ? Color.mist : .clear)
+        .plate(targeted ? .mist : .clear, ring: targeted)
         .clipped()
-        .overlay {
-            if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
-        }
         .zone(space.id, in: store)
         .leaf(.desk(space.id), in: store)
         .contextMenu {

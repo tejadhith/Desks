@@ -3,6 +3,7 @@ import AppKit
 final class Panel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    @objc func _hasActiveAppearanceIgnoringKeyFocus() -> Bool { UserDefaults.standard.string(forKey: "glass") != "clear" }
 
     static var main: Panel? { NSApp.windows.first { $0 is Panel } as? Panel }
 

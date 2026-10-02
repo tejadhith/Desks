@@ -5,15 +5,19 @@ private let erase = KeyEquivalent("\u{7F}")
 struct Card: View {
     @EnvironmentObject var store: Store
     @Environment(\.aside) private var aside
+    @Environment(\.fewer) private var fewer
+    @Environment(\.tidy) private var tidy
     @Binding var item: Item
     @State private var hover = false
     @State private var entry = ""
-    @State private var all = false
-    @State private var more = false
     @GestureState private var dragging = false
     @State private var click: Task<Void, Never>?
     @FocusState private var naming: Bool
     @FocusState private var field: Field?
+    @AppStorage("glass") private var glass = "blue"
+
+    private var all: Bool { !tidy && store.all.contains(item.id) }
+    private var more: Bool { !fewer && store.more.contains(item.id) }
 
     enum Field: Hashable {
         case todo(UUID)
@@ -124,13 +128,15 @@ struct Card: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, folded ? 6 : 10)
-        .background(targeted ? Color.mist : active ? Color.wash : .clear)
-        .background(lifted ? Color.paper : .clear)
+        .plate(targeted ? .mist : active ? glass == "clear" ? .paper.opacity(0.6) : .wash : .clear, ring: targeted)
+        .background {
+            Style.plate
+                .fill(lifted ? glass == "clear" ? AnyShapeStyle(.thickMaterial) : AnyShapeStyle(Color.paper) : AnyShapeStyle(.clear))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+        }
         .clipped()
         .shadow(color: .black.opacity(lifted ? 0.3 : 0), radius: 8, y: 2)
-        .overlay {
-            if targeted { Rectangle().strokeBorder(Color.ink, lineWidth: 2) }
-        }
         .zone(space?.id, in: store)
         .card(item.id, in: store)
         .leaf(.task(item.id), in: store)
@@ -253,7 +259,7 @@ struct Card: View {
                 ForEach(store.chats(of: item, keep: more ? nil : Self.cap)) { Talk(chat: $0, item: item) }
                 if item.chats.count > Self.cap {
                     Button {
-                        withAnimation(Style.fold(!more)) { more.toggle() }
+                        store.trim(item.id, done: false)
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: more ? "chevron.up" : "ellipsis")
@@ -341,7 +347,7 @@ struct Card: View {
         }
         if !shut.isEmpty {
             Button {
-                withAnimation(Style.fold(!all)) { all.toggle() }
+                store.trim(item.id, done: true)
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Image(systemName: all ? "chevron.down" : "chevron.right")

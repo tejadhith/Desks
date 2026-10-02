@@ -4,6 +4,9 @@ enum Style {
     static let header: CGFloat = 44
     static let indent: CGFloat = 34
     static let space = "note"
+    static let round: CGFloat = 16
+    static let shell = RoundedRectangle(cornerRadius: round, style: .continuous)
+    static let plate = RoundedRectangle(cornerRadius: 10, style: .continuous)
     static let mark: NSImage? = {
         let image = Bundle.main.url(forResource: "Status", withExtension: "pdf").flatMap(NSImage.init(contentsOf:))
         image?.isTemplate = true
@@ -25,11 +28,33 @@ extension View {
             .overlay(alignment: .topLeading) { self }
     }
 
+    func plate(_ fill: Color, ring: Bool = false) -> some View {
+        background {
+            Style.plate
+                .fill(fill)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+        }
+        .overlay {
+            if ring {
+                Style.plate
+                    .strokeBorder(Color.ink, lineWidth: 2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+            }
+        }
+    }
+
     func slide(_ id: UUID, in store: Store) -> some View {
         let lifted = store.lift?.id == id
         return offset(y: store.offset(for: id))
             .zIndex(lifted ? 1 : 0)
             .animation(lifted ? nil : .easeInOut(duration: 0.18), value: store.lift?.slot)
+    }
+
+    func berth(_ id: UUID, in store: Store) -> some View {
+        offset(y: store.berth(for: id))
+            .animation(.easeInOut(duration: 0.18), value: store.lift?.slot)
     }
 
     func shelf(_ id: UUID, in store: Store) -> some View {
@@ -92,10 +117,28 @@ private struct Aside: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct Fewer: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private struct Tidy: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var aside: Bool {
         get { self[Aside.self] }
         set { self[Aside.self] = newValue }
+    }
+
+    var fewer: Bool {
+        get { self[Fewer.self] }
+        set { self[Fewer.self] = newValue }
+    }
+
+    var tidy: Bool {
+        get { self[Tidy.self] }
+        set { self[Tidy.self] = newValue }
     }
 }
 
@@ -120,14 +163,16 @@ extension Font {
 
 struct Glyph: ButtonStyle {
     var tone: Color = .ink
+    var fill: Color = .clear
 
     func makeBody(configuration: Configuration) -> some View {
-        Face(configuration: configuration, tone: tone)
+        Face(configuration: configuration, tone: tone, fill: fill)
     }
 
     private struct Face: View {
         let configuration: ButtonStyleConfiguration
         let tone: Color
+        let fill: Color
         @State private var hover = false
         @Environment(\.isEnabled) private var enabled
 
@@ -138,8 +183,9 @@ struct Glyph: ButtonStyle {
                 .frame(width: 22, height: 22)
                 .background(
                     tone.opacity(configuration.isPressed ? 0.2 : hover ? 0.1 : 0),
-                    in: RoundedRectangle(cornerRadius: 5)
+                    in: Circle()
                 )
+                .background(fill, in: Circle())
                 .opacity(enabled ? 1 : 0.35)
                 .contentShape(Rectangle())
                 .onHover { hover = $0 }

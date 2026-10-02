@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class Glide: NSObject {
+final class Glide {
     static let curve = UnitCurve.easeInOut
 
     static func duration(for span: CGFloat) -> Double {
@@ -13,59 +13,82 @@ final class Glide: NSObject {
         .timingCurve(curve, duration: duration)
     }
 
-    private var link: CADisplayLink?
-    private var start: CFTimeInterval?
-    private var length = 0.2
     private var goal: CGFloat = 0
     private var done: CGFloat = 0
     private var last: CGFloat?
+    private var from: Double = 0
+    private var to: Double = 0
+    private var value: Double = 0
+    private var running = false
 
-    func add(_ drift: CGFloat, over duration: Double?) {
-        if link != nil {
-            goal += drift
+    func add(_ drift: CGFloat, until clock: Double?) {
+        guard let clock else {
+            if running {
+                goal += drift
+            } else {
+                move(drift)
+                last = nil
+            }
             return
         }
-        guard let duration, let view = Panel.main?.contentView else {
-            move(drift)
-            last = nil
-            return
+        if running {
+            goal = goal - done + drift
+            from = value
+        } else {
+            goal = drift
+            from = clock - 1
+            running = true
         }
-        goal = drift
-        length = duration
-        let link = view.displayLink(target: self, selector: #selector(step(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
-        link.add(to: .main, forMode: .common)
-        self.link = link
+        done = 0
+        to = clock
     }
 
-    @objc private func step(_ link: CADisplayLink) {
-        let start = start ?? link.targetTimestamp
-        self.start = start
-        let t = min(1, max(0, (link.targetTimestamp - start) / length))
-        let target = goal * CGFloat(Self.curve.value(at: t))
+    func tick(_ now: Double) {
+        guard now != value else { return }
+        let then = value
+        value = now
+        guard running, to != from else { return }
+        let progress = CGFloat(min(1, max(0, (now - from) / (to - from))))
+        let late = CGFloat(min(1, max(0, (then - from) / (to - from))))
+        let target = goal * (progress >= 1 ? 1 : late)
         move(target - done)
         done = target
-        if t >= 1 { stop() }
+        if progress >= 1 { stop() }
     }
 
     private func move(_ step: CGFloat) {
-        guard let top = NSScreen.screens.first?.frame.maxY else { return }
+        guard let top = NSScreen.screens.first?.frame.maxY, let panel = Panel.main?.frame else { return }
         let mouse = NSEvent.mouseLocation
         let y = top - mouse.y
         let base = last.map { abs(y - $0) > 1.5 ? y : $0 } ?? y
-        let next = base + step
+        let floor = min(base, top - panel.maxY + Style.header + 1)
+        let ceiling = max(base, top - panel.minY - 1)
+        let next = min(ceiling, max(floor, base + step))
         CGWarpMouseCursorPosition(CGPoint(x: mouse.x, y: next))
         CGAssociateMouseAndMouseCursorPosition(1)
         last = next
     }
 
     private func stop() {
-        link?.invalidate()
-        link = nil
-        start = nil
+        running = false
         goal = 0
         done = 0
         last = nil
         DispatchQueue.main.async { Panel.main?.invalidateShadow() }
     }
+}
+
+struct Clock: ViewModifier, Animatable {
+    var value: Double
+    let tick: (Double) -> Void
+
+    var animatableData: Double {
+        get { value }
+        set {
+            value = newValue
+            tick(newValue)
+        }
+    }
+
+    func body(content: Content) -> some View { content }
 }

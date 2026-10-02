@@ -9,10 +9,12 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private var panel: Panel!
     private var status: NSStatusItem!
     private var agents: NSMenuItem!
+    private var themes: [NSMenuItem] = []
     private var hosting: NSView!
     private var away: Away!
     private var grab: Grab!
     private var brow: Brow!
+    private var bring: Bring!
     private var hotkey: Hotkey!
     private var option: Hotkey!
     private var presses = 0
@@ -36,6 +38,10 @@ final class Delegate: NSObject, NSApplicationDelegate {
         hosting = view
         let stage = NSView(frame: NSRect(origin: .zero, size: panel.frame.size))
         stage.addSubview(view)
+        stage.wantsLayer = true
+        stage.layer?.cornerRadius = Style.round
+        stage.layer?.cornerCurve = .continuous
+        stage.layer?.masksToBounds = true
         panel.contentView = stage
         stretch()
         if let top = saved() {
@@ -58,6 +64,15 @@ final class Delegate: NSObject, NSApplicationDelegate {
         agents = menu.addItem(withTitle: "", action: #selector(connect), keyEquivalent: "")
         name()
         menu.addItem(withTitle: "Open Archive", action: #selector(archive), keyEquivalent: "")
+        let looks = NSMenu()
+        themes = [("Blue Glass", "blue"), ("Clear Glass", "clear")].map { title, value in
+            let item = looks.addItem(withTitle: title, action: #selector(theme(_:)), keyEquivalent: "")
+            item.representedObject = value
+            item.target = self
+            return item
+        }
+        mark()
+        menu.addItem(withTitle: "Appearance", action: nil, keyEquivalent: "").submenu = looks
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Desks", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -75,6 +90,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         away = Away(panel: panel)
         grab = Grab(panel: panel, store: store)
         brow = Brow(store: store)
+        bring = Bring(store: store)
         for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
             NotificationCenter.default.publisher(for: name, object: panel)
                 .sink { [weak self] _ in
@@ -135,7 +151,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         hosting.frame = NSRect(x: 0, y: stage.height - tallest, width: stage.width, height: tallest)
     }
 
-    private func fit(_ content: CGFloat, _ collapsed: Bool) {
+    private func fit(_ content: CGFloat, _ collapsed: Bool, now: Bool = false) {
         let screen = (panel.screen ?? NSScreen.main)?.visibleFrame ?? .zero
         let room = screen.height - 32
         let limit = room - Style.header
@@ -152,6 +168,13 @@ final class Delegate: NSObject, NSApplicationDelegate {
         let height = collapsed ? Style.header : min(Style.header + content, room)
         if height < panel.frame.height - 0.5, until != nil { return }
         guard abs(panel.frame.height - height) > 0.5 else { return }
+        if height > panel.frame.height, !now {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.fit(self.store.height, self.store.collapsed, now: true)
+            }
+            return
+        }
         var frame = panel.frame
         frame.origin.y = frame.maxY - height
         frame.size.height = height
@@ -219,6 +242,18 @@ final class Delegate: NSObject, NSApplicationDelegate {
     private func name() {
         agents.title = Hooks.connected ? "Disconnect Coding Agents" : "Connect Coding Agents"
         agents.toolTip = "Claude Code, Codex, Devin and VS Code report their conversations to Desks through hooks"
+    }
+
+    @objc private func theme(_ item: NSMenuItem) {
+        UserDefaults.standard.set(item.representedObject as? String, forKey: "glass")
+        let refresh = Selector(("_sendForcedWindowChangedKeyState"))
+        if panel.responds(to: refresh) { panel.perform(refresh) }
+        mark()
+    }
+
+    private func mark() {
+        let current = UserDefaults.standard.string(forKey: "glass") == "clear" ? "clear" : "blue"
+        themes.forEach { $0.state = $0.representedObject as? String == current ? .on : .off }
     }
 
     @objc private func archive() {

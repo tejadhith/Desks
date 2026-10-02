@@ -170,6 +170,15 @@ enum Sky {
         }
     }
 
+    static func order() -> [UInt32: Int] {
+        let info = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
+        var order: [UInt32: Int] = [:]
+        for (index, entry) in info.enumerated() {
+            if let id = entry[kCGWindowNumber as String] as? UInt32, order[id] == nil { order[id] = index }
+        }
+        return order
+    }
+
     private static func ids(on space: UInt64) -> [UInt32] {
         var set: UInt64 = 1
         var clear: UInt64 = 0
