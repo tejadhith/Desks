@@ -197,7 +197,8 @@ struct Note: View {
     private var composer: some View {
         HStack(spacing: 8) {
             Badge(label: "+", active: false)
-            TextField("What are you working on?", text: Binding(get: { draft ?? "" }, set: { draft = $0 }))
+            TextField("What are you working on?", text: Binding(get: { draft ?? "" }, set: { draft = $0 }), prompt: Text(""))
+                .hint("What are you working on?", (draft ?? "").isEmpty)
                 .textFieldStyle(.plain)
                 .font(.grotesk(13, .semibold))
                 .focused($typing)

@@ -39,7 +39,8 @@ struct Card: View {
             HStack(spacing: 8) {
                 if store.editing == item.id {
                     Badge(label: space?.number.map(String.init) ?? "–", active: active)
-                    TextField("Task name", text: $item.title)
+                    TextField("Task name", text: $item.title, prompt: Text(""))
+                        .hint("Task name", item.title.isEmpty)
                         .textFieldStyle(.plain)
                         .focused($naming)
                         .onSubmit { store.editing = nil }
@@ -210,7 +211,8 @@ struct Card: View {
                 .padding(.leading, Style.indent)
         }
 
-        TextField("Add a description", text: $item.detail, axis: .vertical)
+        TextField("Add a description", text: $item.detail, prompt: Text(""), axis: .vertical)
+            .hint("Add a description", item.detail.isEmpty)
             .textFieldStyle(.plain)
             .lineLimit(1...8)
             .wrap(item.detail, lines: 8)
@@ -332,7 +334,8 @@ struct Card: View {
                 .font(.system(size: 10, weight: .semibold))
                 .frame(width: 14)
                 .opacity(0.6)
-            TextField("Add a to-do", text: $entry, axis: .vertical)
+            TextField("Add a to-do", text: $entry, prompt: Text(""), axis: .vertical)
+                .hint("Add a to-do", entry.isEmpty)
                 .textFieldStyle(.plain)
                 .wrap(entry)
                 .focused($field, equals: .add)
@@ -539,7 +542,8 @@ private struct Check: View {
                 if !now { store.shed() }
             }
             .help(todo.done ? "Mark as not done · ⌘↩ · drag to reorder" : "Mark as done · ⌘↩ · drag to reorder")
-            TextField("To-do", text: $todo.text, axis: .vertical)
+            TextField("To-do", text: $todo.text, prompt: Text(""), axis: .vertical)
+                .hint("To-do", todo.text.isEmpty)
                 .textFieldStyle(.plain)
                 .focused(focus, equals: .todo(todo.id))
                 .onKeyPress(.return) { split() }

@@ -28,6 +28,16 @@ extension View {
             .overlay(alignment: .topLeading) { self }
     }
 
+    func hint(_ text: String, _ shown: Bool) -> some View {
+        background(alignment: .topLeading) {
+            if shown {
+                Text(text)
+                    .opacity(0.8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
     func plate(_ fill: Color, ring: Bool = false) -> some View {
         background {
             Style.plate
