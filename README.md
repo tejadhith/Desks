@@ -15,71 +15,101 @@ Keep a short list of what you are working on in the top-right corner of the scre
 <td width="50%" valign="top">
 <img src="docs/desktops.webp" alt="Creating a task, which adds its own desktop in Mission Control"><br>
 <b>A desktop per task</b><br>
-Creating a task takes you to its own desktop, reusing an empty spare one when there is one. Desktop 1 stays home for unsorted windows. Right-click a desktop that isn't a task to remove it.
+Every task gets its own Mission Control desktop. Desktop 1 stays home for everything else.
 </td>
 <td width="50%" valign="top">
 <img src="docs/upcoming.webp" alt="Saving a task for later with Command-Return, then moving an active task to Upcoming"><br>
-<b>Upcoming tasks</b><br>
-Press <code>⌘↩</code> instead of <code>↩</code> to save a task for later without a desktop, then start it when you are ready. Right-click an active task and choose <b>Move to Upcoming</b> to put it back; its desktop goes away and its windows stay open.
+<b>Upcoming</b><br>
+Save a task for later without a desktop, and start it when you are ready.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/todos.webp" alt="Writing a description, adding and checking off to-dos, and tucking the list away"><br>
 <b>Descriptions and to-dos</b><br>
-Jot down what the task is about and keep a checklist that edits like a list: <code>↩</code> adds a to-do or splits one at the cursor, <code>↩</code> on an empty one ends the list, and <code>⌫</code> at the start of a to-do joins it to the one above. <code>↑</code>/<code>↓</code> move between them, <code>⌘↩</code> checks or unchecks one and moves on, and dragging a to-do by its circle reorders it. Done to-dos gather under the list behind a count; click <b>To-dos</b> to tuck the whole list away, and collapsed tasks and lists show how many are done.
+A note and a checklist on every task. The checklist edits like a list.
 </td>
 <td width="50%" valign="top">
 <img src="docs/windows.webp" alt="Expanding a task and clicking its windows to jump to them"><br>
 <b>Live window lists</b><br>
-See which windows sit on each task's desktop and click one to jump to it.
+See which windows are on each task's desktop, and click one to jump to it.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/switch.webp" alt="Switching tasks by clicking and with Control-number shortcuts"><br>
 <b>Switch fast</b><br>
-Click a task, or use the macOS <code>⌃1</code>–<code>⌃9</code> desktop shortcuts shown on each task. Once a switch settles, the desktop's number and task drop out of the notch for a moment, or out of a small tab under the menu bar on a screen without one.
+Click a task or press <code>⌃1</code>–<code>⌃9</code>. The notch briefly shows where you landed.
 </td>
 <td width="50%" valign="top">
 <img src="docs/organize.webp" alt="Reordering tasks by dragging, renaming one, and scrolling a long name"><br>
 <b>Organize</b><br>
-Drag a task by its name to reorder it; the others slide out of the way. Double-click a name to rename it. A long name is cut to one line while its task is folded and shows in full once it opens.
+Drag a task to reorder it, and double-click its name to rename it.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/move.webp" alt="Dragging a window by its title bar onto a task, dragging a window row, and using Send to"><br>
+<img src="docs/move.webp" alt="Dragging a window by its title bar onto a task, dragging a window row, using Send to, and bringing an app here from the app switcher"><br>
 <b>Move windows</b><br>
-Drag any window by its title bar onto a task in the panel, drag a window's row onto a task, right-click it and choose <b>Send to</b>, or send the front window to a task with one click. The window comes to the front on its new desktop and keeps its size and place, scaled to fit when it moves to another screen. In the app switcher, press <code>Space</code> before letting go of <code>⌘</code> to bring the highlighted app's window to the desktop you are on instead of going to it.
+Drag a window onto a task, use <b>Send to</b>, or bring an app here from <code>⌘Tab</code>.
 </td>
 <td width="50%" valign="top">
-<img src="docs/agents.webp" alt="Linking an unsorted conversation to a task, opening it on the task&#x27;s desktop, and unlinking another"><br>
+<img src="docs/agents.webp" alt="Linking an unsorted conversation to a task, a new one sorting itself onto its task, opening one on the task&#x27;s desktop, and unlinking another"><br>
 <b>Coding-agent conversations</b><br>
-Link conversations from Claude Code in the Claude app, Codex, Devin, and the VS Code Agents window to a task. Conversations that aren't linked yet wait in an unsorted list for each app; drag one onto a task to link it, and hover a linked one and click × to unlink it. Clicking a linked conversation brings the app's window to the task's desktop and opens that conversation; clicking an unlinked one takes you to the desktop where the app is. Each conversation shows whether it is working, needs you, or is done. See <a href="#coding-agents">Coding agents</a>.
+Conversations from Claude, Codex, Devin and VS Code sort onto their task and show when they need you. See <a href="#coding-agents">Coding agents</a>.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/displays.webp" alt="Moving a task and its windows to another screen"><br>
 <b>Multiple displays</b><br>
-Desktops on every screen are listed and switched correctly. Move a task to another screen from its right-click menu; it takes over an empty spare desktop there if there is one. When a screen is unplugged, its tasks move to the built-in screen and return when it is plugged back in.
+Move a task and its windows to another screen.
 </td>
 <td width="50%" valign="top">
 <img src="docs/away.webp" alt="Folding the panel, snapping it back to the corner, and stepping below a notification"><br>
 <b>Stays out of the way</b><br>
-The task on your current desktop stays open and the rest collapse to a single line with app icons. Rest the pointer on a collapsed task, desktop or list to peek inside it; the others fold, and the pointer moves with your row so it stays under it. Click its chevron to keep it open. A task lists its three most recent conversations until you ask for more. The panel sizes itself to its content, and it snaps back to the corner after you move it. It steps below notification banners and returns when they leave.
+Only the task you are on stays open; rest the pointer on another to peek inside. The panel steps aside for notifications.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/gestures.webp" alt="Tucking the panel into the screen edge, seeing through it, and folding a task with Option"><br>
 <b>Gestures from anywhere</b><br>
-Double-tap <code>⌃</code> to tuck the panel into the screen edge (hover the edge to peek at it), or double-tap and hold <code>⌃</code> to see through it. Double-tap <code>⌥</code> to fold the to-dos or task under the pointer, or the whole panel when the pointer is elsewhere. Clicking the header also folds the panel. Choose <b>Appearance</b> from the Desks menu bar icon to switch between blue and clear Liquid Glass.
+Tuck the panel into the screen edge, see through it, or fold whatever is under the pointer.
 </td>
 <td width="50%"></td>
 </tr>
 </table>
+
+### Shortcuts
+
+| Keys | What it does |
+|---|---|
+| `↩` in the new-task field | Create the task and its desktop |
+| `⌘↩` in the new-task field | Save the task to Upcoming |
+| `⌃1`–`⌃9` | Switch desktops (the macOS shortcuts) |
+| `⌃` `⌃` | Tuck the panel into the screen edge, or bring it back |
+| `⌃` `⌃`, then hold | See through the panel |
+| `⌥` `⌥` | Fold the to-dos or task under the pointer, or the whole panel |
+| `⌘Tab`, then `Space` before letting go of `⌘` | Bring the highlighted app's window to this desktop |
+
+In a to-do list:
+
+| Keys | What it does |
+|---|---|
+| `↩` | Add a to-do, or split one at the cursor; on an empty one, end the list |
+| `⌫` at the start of a to-do | Join it to the one above |
+| `↑` `↓` | Move between to-dos |
+| `⌘↩` | Check or uncheck it and move on |
+| Drag its circle | Reorder |
+
+### Good to know
+
+- Creating a task reuses an empty spare desktop when there is one. Right-click a desktop that isn't a task to remove it.
+- When a screen is unplugged, its tasks move to the built-in screen and return when it is plugged back in.
+- Click a peeking task's chevron to keep it open.
+- Every task has a button that sends the front window to it.
+- Choose **Appearance** from the Desks menu bar icon to switch between blue and clear Liquid Glass.
 
 ## Requirements
 
