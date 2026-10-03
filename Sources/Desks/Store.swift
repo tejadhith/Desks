@@ -16,6 +16,14 @@ struct Anchor {
     let until: Date
 }
 
+struct Sweep {
+    let from: Double
+    let to: Double
+    let start: CGFloat
+    var value: Double
+    var last: CGFloat = 0
+}
+
 enum Aim: Equatable {
     case card(UUID)
     case inbox(Agent)
@@ -61,6 +69,7 @@ final class Store: ObservableObject {
     @Published var reveal: Leaf?
     @Published private(set) var rises: [Leaf: CGFloat] = [:]
     private(set) var sinking: Date?
+    private(set) var sweep: Sweep?
     private var turn = 0
     private var leaves: [Leaf: CGRect] = [:]
     private var low: [Leaf: CGFloat] = [:]
@@ -94,11 +103,13 @@ final class Store: ObservableObject {
     private var sorting = false
     private var known: Set<UUID>?
     var snap: () -> Void = {}
+    var size: (CGFloat) -> Void = { _ in }
 
     private let url: URL
     private var titles: [UInt32: String] = [:]
     private var fronts: [UInt64: Sky.Window] = [:]
     private var leads: [UInt64: UInt32] = [:]
+    private var arrival = (space: Sky.current(), at: Date.distantPast)
     private var loop: Task<Void, Never>?
     private var scout: Scout?
     private var stirring: Task<Void, Never>?
@@ -968,6 +979,8 @@ final class Store: ObservableObject {
             return
         }
         let duration = Glide.duration(for: shrink > 0 || total.isNaN ? shrink : total)
+        let from = (sinking ?? .distantPast) > Date() ? sweep?.value ?? clock : clock
+        sweep = Panel.main.map { Sweep(from: from, to: clock + 1, start: $0.frame.height, value: from) }
         sinking = Date().addingTimeInterval(duration + 0.05)
         turn += 1
         let mark = turn
@@ -990,6 +1003,15 @@ final class Store: ObservableObject {
 
     func tick(_ value: Double) {
         glide.tick(value)
+        guard var sweep, sweep.to > sweep.from else { return }
+        let now = CGFloat(min(1, max(0, (value - sweep.from) / (sweep.to - sweep.from))))
+        let step = max(0, now - sweep.last)
+        let goal = Style.header + (collapsed ? 0 : overflow ? limit : min(height, limit))
+        let reach = { sweep.start + (goal - sweep.start) * min(1, $0) }
+        size(now >= 1 ? goal : min(reach(sweep.last), reach(now), reach(now + step), reach(now + 2 * step)))
+        sweep.value = value
+        sweep.last = now
+        self.sweep = now >= 1 ? nil : sweep
     }
 
     private func follow(_ drift: CGFloat, smooth: Bool = false) {
@@ -1232,6 +1254,7 @@ final class Store: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.stay() }
                 Task { @MainActor in
                     self?.glance()
                     await self?.refresh()
@@ -1491,6 +1514,18 @@ final class Store: ObservableObject {
         titles[id] = title
         guard let index = windows.firstIndex(where: { $0.id == id }), windows[index].title != title else { return }
         windows[index].title = title
+    }
+
+    private func stay() {
+        let now = Sky.current()
+        if now != arrival.space { arrival = (now, Date()) }
+        guard Date().timeIntervalSince(arrival.at) < 0.3, trusted, let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != getpid(),
+              app.bundleIdentifier != "com.apple.finder", let space = spaces.first(where: { $0.id == now }), space.number != nil
+        else { return }
+        let visible = Sky.visible()
+        let windows = windows.filter { $0.pid == app.processIdentifier }
+        guard !windows.isEmpty, !windows.contains(where: { visible.contains($0.space) }) else { return }
+        Access.desk(on: space.display)
     }
 
     private func glance() {

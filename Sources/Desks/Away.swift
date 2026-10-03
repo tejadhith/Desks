@@ -7,6 +7,7 @@ final class Away {
     private var rest: NSPoint?
     private var placed: NSPoint?
     private var moving = false
+    private var moves = 0
     private var tucked = false
     private var right = true
     private var revealed = false
@@ -186,6 +187,8 @@ final class Away {
     private func place(_ point: NSPoint, then done: @escaping () -> Void) {
         placed = point
         moving = true
+        moves += 1
+        let move = moves
         var frame = panel.frame
         frame.origin = NSPoint(x: point.x, y: point.y - frame.height)
         NSAnimationContext.runAnimationGroup { context in
@@ -194,7 +197,7 @@ final class Away {
             panel.animator().setFrame(frame, display: true)
         } completionHandler: { [weak self] in
             MainActor.assumeIsolated {
-                guard let self else { return }
+                guard let self, self.moves == move else { return }
                 self.moving = false
                 if self.tucked, !self.revealed, self.near(self.top(self.panel.frame), point) { self.clip(true) }
                 done()

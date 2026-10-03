@@ -1,3 +1,5 @@
+<img src="docs/icon.png" width="128" alt="Desks app icon">
+
 # Desks
 
 A floating task panel for macOS where every task gets its own real desktop.

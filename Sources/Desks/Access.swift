@@ -99,6 +99,23 @@ enum Access {
         windows(of: window.pid).first { $0.id == window.id }?.element
     }
 
+    static func desk(on display: String) {
+        guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first,
+              let frame = Sky.frame(of: display)
+        else { return }
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        let desk = info.first { entry in
+            guard entry[kCGWindowOwnerPID as String] as? pid_t == finder.processIdentifier,
+                  entry[kCGWindowLayer as String] as? Int ?? 0 < 0,
+                  let bounds = entry[kCGWindowBounds as String] as? NSDictionary
+            else { return false }
+            return CGRect(dictionaryRepresentation: bounds) == frame
+        }
+        var psn = ProcessSerialNumber()
+        guard let id = desk?[kCGWindowNumber as String] as? UInt32, process(finder.processIdentifier, &psn) == noErr else { return }
+        Sky.focus(id, of: &psn)
+    }
+
     static func lift(_ window: Sky.Window) {
         guard let element = element(of: window) else { return }
         _ = press(element, kAXRaiseAction)

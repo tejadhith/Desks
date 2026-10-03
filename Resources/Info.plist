@@ -6,6 +6,8 @@
 	<string>Fonts</string>
 	<key>CFBundleExecutable</key>
 	<string>Desks</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.desks.app</string>
 	<key>CFBundleName</key>

@@ -87,6 +87,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
             .store(in: &bag)
 
         store.snap = { [weak self] in self?.anchor() }
+        store.size = { [weak self] height in DispatchQueue.main.async { self?.size(height) } }
         away = Away(panel: panel)
         grab = Grab(panel: panel, store: store)
         brow = Brow(store: store)
@@ -166,7 +167,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         let overflow = until == nil ? content > limit : store.overflow
         if store.overflow != overflow { store.overflow = overflow }
         let height = collapsed ? Style.header : min(Style.header + content, room)
-        if height < panel.frame.height - 0.5, until != nil { return }
+        if until != nil, height < panel.frame.height - 0.5 || store.sweep != nil { return }
         guard abs(panel.frame.height - height) > 0.5 else { return }
         if height > panel.frame.height, !now {
             DispatchQueue.main.async { [weak self] in
@@ -175,11 +176,16 @@ final class Delegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        size(height)
+        DispatchQueue.main.async { [weak self] in self?.panel.invalidateShadow() }
+    }
+
+    private func size(_ height: CGFloat) {
+        guard abs(panel.frame.height - height) > 0.5 else { return }
         var frame = panel.frame
         frame.origin.y = frame.maxY - height
         frame.size.height = height
         panel.setFrame(frame, display: false)
-        DispatchQueue.main.async { [weak self] in self?.panel.invalidateShadow() }
     }
 
     private func press() {
