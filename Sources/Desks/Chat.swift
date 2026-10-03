@@ -86,6 +86,27 @@ enum Agent: String, Codable, CaseIterable {
         }
     }
 
+    func halted(_ file: URL) -> Bool {
+        guard self == .claude, let handle = try? FileHandle(forReadingFrom: file) else { return false }
+        defer { try? handle.close() }
+        let end = (try? handle.seekToEnd()) ?? 0
+        try? handle.seek(toOffset: end > 65536 ? end - 65536 : 0)
+        guard let data = try? handle.readToEnd() else { return false }
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n").reversed() {
+            guard let row = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let kind = row["type"] as? String, kind == "user" || kind == "assistant",
+                  row["isSidechain"] as? Bool != true, row["isMeta"] as? Bool != true
+            else { continue }
+            guard kind == "user", let message = row["message"] as? [String: Any] else { return false }
+            if let text = message["content"] as? String { return text.hasPrefix(Self.pause) }
+            let blocks = message["content"] as? [[String: Any]] ?? []
+            return blocks.contains { ($0["text"] as? String)?.hasPrefix(Self.pause) == true }
+        }
+        return false
+    }
+
+    private static let pause = "[Request interrupted by user"
+
     private static func date(_ text: String?) -> Date? {
         guard let value = text.flatMap(Double.init), value > 0 else { return nil }
         return Date(timeIntervalSince1970: value > 1e11 ? value / 1000 : value)
@@ -158,7 +179,7 @@ enum Status: Equatable {
 struct Beat: Equatable {
     let agent: Agent
     let session: String
-    let status: Status
+    var status: Status
     let cwd: String
     let tool: String
     let prompt: Date?

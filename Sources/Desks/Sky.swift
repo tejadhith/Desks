@@ -32,6 +32,8 @@ enum Sky {
     private typealias Record = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<UInt8>) -> Int32
     private typealias Pin = @convention(c) (Int32, CFArray, UInt64) -> Void
     private typealias Holders = @convention(c) (Int32, Int32, CFArray) -> UnsafeRawPointer?
+    private typealias Notify = @convention(c) (UInt32, UnsafeMutableRawPointer?, Int, UnsafeMutableRawPointer?) -> Void
+    private typealias Register = @convention(c) (Notify, UInt32, UnsafeMutableRawPointer?) -> Int32
 
     private static let library = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
 
@@ -56,6 +58,8 @@ enum Sky {
     private static let record = load("SLPSPostEventRecordTo", as: Record.self)
     private static let managed = load("SLSMoveWindowsToManagedSpace", as: Pin.self)
     private static let holders = load("SLSCopySpacesForWindows", as: Holders.self)
+    private static let register = load("SLSRegisterNotifyProc", as: Register.self)
+    private static var heard: [(UInt32, UInt32?) -> Void] = []
 
     private static let connection = main()
 
@@ -81,6 +85,26 @@ enum Sky {
             }
         }
         return spaces
+    }
+
+    static func listen(_ handler: @escaping (UInt32, UInt32?) -> Void) {
+        if heard.isEmpty {
+            for code: UInt32 in 1325...1329 {
+                _ = register({ code, data, length, _ in
+                    let window = length == 12 ? data?.loadUnaligned(fromByteOffset: 8, as: UInt32.self) : nil
+                    for handler in Sky.heard { handler(code, window) }
+                }, code, nil)
+            }
+        }
+        heard.append(handler)
+    }
+
+    static func normal(_ window: UInt32) -> Bool {
+        guard let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], window) as? [[String: Any]])?.first,
+              let layer = info[kCGWindowLayer as String] as? Int,
+              let pid = info[kCGWindowOwnerPID as String] as? pid_t
+        else { return false }
+        return [0, 3, 8].contains(layer) && pid != getpid()
     }
 
     static func current() -> UInt64 {

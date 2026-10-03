@@ -42,7 +42,7 @@ Click a task, or use the macOS <code>⌃1</code>–<code>⌃9</code> desktop sho
 <td width="50%" valign="top">
 <img src="docs/organize.webp" alt="Reordering tasks by dragging, renaming one, and scrolling a long name"><br>
 <b>Organize</b><br>
-Drag a task by its name to reorder it; the others slide out of the way. Double-click a name to rename it, and hover a long name to scroll the rest into view.
+Drag a task by its name to reorder it; the others slide out of the way. Double-click a name to rename it. A long name is cut to one line while its task is folded and shows in full once it opens.
 </td>
 </tr>
 <tr>

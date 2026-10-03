@@ -252,7 +252,7 @@ enum Guess {
         return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     }
 
-    private static func transcript(_ session: String) -> URL? {
+    static func transcript(_ session: String) -> URL? {
         let manager = FileManager.default
         for folder in ["Claude-3p", "Claude"] {
             let root = support.appendingPathComponent(folder).appendingPathComponent("claude-code-sessions")

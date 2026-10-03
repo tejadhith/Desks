@@ -169,18 +169,86 @@ private struct Spin: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: store.collapsed)) { context in
-            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
-            ZStack {
-                Circle()
-                    .stroke(Color.ink.opacity(0.3), lineWidth: 1.6)
-                Circle()
-                    .trim(from: 0, to: 0.3)
-                    .stroke(Color.ink, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-                    .rotationEffect(.degrees(turn * 360))
-            }
+        Ring(paused: store.collapsed)
             .frame(width: 9, height: 9)
+    }
+}
+
+private struct Ring: NSViewRepresentable {
+    let paused: Bool
+
+    func makeNSView(context: Context) -> Wheel {
+        Wheel()
+    }
+
+    func updateNSView(_ wheel: Wheel, context: Context) {
+        wheel.paused = paused
+    }
+}
+
+private final class Wheel: NSView {
+    private let track = CAShapeLayer()
+    private let arc = CAShapeLayer()
+
+    var paused = false {
+        didSet { if paused != oldValue { turn() } }
+    }
+
+    override var isFlipped: Bool { true }
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        track.strokeColor = NSColor(Color.ink).withAlphaComponent(0.3).cgColor
+        arc.strokeColor = NSColor(Color.ink).cgColor
+        arc.lineCap = .round
+        arc.strokeEnd = 0.3
+        for shape in [track, arc] {
+            shape.fillColor = nil
+            shape.lineWidth = 1.6
+            layer?.addSublayer(shape)
         }
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for shape in [track, arc] {
+            shape.frame = bounds
+            shape.path = CGPath(ellipseIn: bounds, transform: nil)
+        }
+        CATransaction.commit()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scale()
+        turn()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        scale()
+    }
+
+    private func scale() {
+        let scale = window?.backingScaleFactor ?? 2
+        for shape in [track, arc] { shape.contentsScale = scale }
+    }
+
+    private func turn() {
+        arc.removeAnimation(forKey: "turn")
+        guard window != nil, !paused else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = 2 * Double.pi
+        spin.duration = 1
+        spin.repeatCount = .infinity
+        spin.beginTime = arc.convertTime(CACurrentMediaTime(), from: nil) - Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+        arc.add(spin, forKey: "turn")
     }
 }
 
@@ -203,6 +271,7 @@ extension Image {
 }
 
 @MainActor
-private enum Icons {
+enum Icons {
     static var all: [Agent: NSImage] = [:]
+    static var apps: [pid_t: NSImage] = [:]
 }

@@ -22,10 +22,14 @@ final class Brow {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.sync() }
             .store(in: &bag)
-        Timer.publish(every: 1, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.turn() }
-            .store(in: &bag)
+        Sky.listen { [weak self] code, window in
+            DispatchQueue.main.async { self?.heard(code, window) }
+        }
+    }
+
+    private func heard(_ code: UInt32, _ window: UInt32?) {
+        guard code == 1329 || ((code == 1325 || code == 1326) && flaps.values.contains { $0.id == window }) else { return }
+        turn()
     }
 
     private func turn() {
@@ -104,6 +108,10 @@ private final class Flap {
         window.contentView = host
         host.frame = CGRect(origin: .zero, size: perch.frame.size)
         window.orderFrontRegardless()
+    }
+
+    var id: UInt32 {
+        UInt32(window.windowNumber)
     }
 
     var pinned: Bool {

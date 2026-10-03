@@ -153,11 +153,6 @@ struct Note: View {
                     .layoutPriority(-1)
                     .help("The desktop you are on")
             }
-            if store.busy {
-                ProgressView()
-                    .controlSize(.mini)
-                    .tint(Color.ink)
-            }
             Spacer()
             if !store.anchored {
                 Button {
@@ -171,7 +166,7 @@ struct Note: View {
                 Image(systemName: "plus")
             }
             .buttonStyle(Glyph(fill: plain ? .paper : .clear))
-            .disabled(store.busy || !store.trusted)
+            .disabled(!store.trusted)
             .help("New task")
             Button {
                 store.collapsed.toggle()

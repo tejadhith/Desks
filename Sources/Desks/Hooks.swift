@@ -157,26 +157,88 @@ enum Hooks {
         try? manager.removeItem(at: events)
     }
 
-    static func read() -> [Beat] {
-        let manager = FileManager.default
-        let files = (try? manager.contentsOfDirectory(at: events, includingPropertiesForKeys: nil)) ?? []
-        let stale = Date().addingTimeInterval(-7 * 86400)
-        return files.compactMap { file in
-            guard file.pathExtension == "json", !file.lastPathComponent.hasPrefix("."),
-                  let data = try? Data(contentsOf: file),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let agent = (json["agent"] as? String).flatMap(Agent.init(rawValue:)),
-                  let session = json["session"] as? String, !session.isEmpty,
-                  let seconds = json["time"] as? Double
-            else { return nil }
-            let time = Date(timeIntervalSince1970: seconds)
-            guard time > stale else {
-                try? manager.removeItem(at: file)
-                return nil
-            }
-            let prompt = (json["prompt"] as? Double).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil }
-            return Beat(agent: agent, session: session, status: Status(json["event"] as? String ?? ""), cwd: json["cwd"] as? String ?? "", tool: json["tool"] as? String ?? "", prompt: prompt, time: time)
+    struct Seen {
+        var files: [String: (date: Date, beat: Beat?)] = [:]
+        var transcripts: [String: URL] = [:]
+        var halts: [String: (size: Int, date: Date, halted: Bool)] = [:]
+        var misses: [String: Date] = [:]
+
+        mutating func transcript(_ session: String, _ date: Date) -> URL? {
+            if let file = transcripts[session] { return file }
+            if misses[session] == date { return nil }
+            let file = Guess.transcript(session)
+            transcripts[session] = file
+            misses[session] = file == nil ? date : nil
+            return file
         }
+
+        mutating func halted(_ session: String, _ file: URL) -> Bool {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: file.path)
+            guard let size = attributes?[.size] as? Int, let date = attributes?[.modificationDate] as? Date else {
+                transcripts[session] = nil
+                return false
+            }
+            if let halt = halts[session], halt.size == size, halt.date == date { return halt.halted }
+            let halted = Agent.claude.halted(file)
+            halts[session] = (size, date, halted)
+            return halted
+        }
+    }
+
+    static func read(_ seen: inout Seen) -> (beats: [Beat], tails: Set<URL>) {
+        let manager = FileManager.default
+        let files = (try? manager.contentsOfDirectory(at: events, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let stale = Date().addingTimeInterval(-7 * 86400)
+        var kept: [String: (date: Date, beat: Beat?)] = [:]
+        var beats: [Beat] = []
+        var tails: Set<URL> = []
+        var checked: Set<String> = []
+        for file in files where file.pathExtension == "json" && !file.lastPathComponent.hasPrefix(".") {
+            let name = file.lastPathComponent
+            let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            let found: Beat?
+            if let cached = seen.files[name], cached.date == date {
+                found = cached.beat
+            } else {
+                found = beat(file)
+            }
+            guard var beat = found else {
+                kept[name] = (date, nil)
+                continue
+            }
+            guard beat.time > stale else {
+                try? manager.removeItem(at: file)
+                continue
+            }
+            kept[name] = (date, beat)
+            if beat.agent == .claude, beat.status == .running || beat.status == .waiting {
+                checked.insert(beat.session)
+                if let transcript = seen.transcript(beat.session, date) {
+                    if seen.halted(beat.session, transcript) {
+                        beat.status = .idle
+                    } else {
+                        tails.insert(transcript)
+                    }
+                }
+            }
+            beats.append(beat)
+        }
+        seen.files = kept
+        seen.transcripts = seen.transcripts.filter { checked.contains($0.key) }
+        seen.halts = seen.halts.filter { checked.contains($0.key) }
+        seen.misses = seen.misses.filter { checked.contains($0.key) }
+        return (beats, tails)
+    }
+
+    private static func beat(_ file: URL) -> Beat? {
+        guard let data = try? Data(contentsOf: file),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let agent = (json["agent"] as? String).flatMap(Agent.init(rawValue:)),
+              let session = json["session"] as? String, !session.isEmpty,
+              let seconds = json["time"] as? Double
+        else { return nil }
+        let prompt = (json["prompt"] as? Double).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil }
+        return Beat(agent: agent, session: session, status: Status(json["event"] as? String ?? ""), cwd: json["cwd"] as? String ?? "", tool: json["tool"] as? String ?? "", prompt: prompt, time: Date(timeIntervalSince1970: seconds))
     }
 
     private static func command(_ agent: String, _ event: String) -> String {
@@ -205,5 +267,27 @@ enum Hooks {
         try? manager.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard (try? output.write(to: file, atomically: true, encoding: .utf8)) != nil else { return }
         if let permissions { try? manager.setAttributes([.posixPermissions: permissions], ofItemAtPath: file.path) }
+    }
+}
+
+final class Watch {
+    private let source: DispatchSourceFileSystemObject
+    private(set) var dead = false
+
+    init?(_ url: URL, _ handler: @escaping () -> Void) {
+        let descriptor = open(url.path, O_EVTONLY)
+        guard descriptor >= 0 else { return nil }
+        source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: [.write, .extend, .delete, .rename], queue: .main)
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            if !self.source.data.isDisjoint(with: [.delete, .rename]) { self.dead = true }
+            handler()
+        }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+    }
+
+    deinit {
+        source.cancel()
     }
 }

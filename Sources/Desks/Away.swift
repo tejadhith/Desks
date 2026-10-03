@@ -13,14 +13,29 @@ final class Away {
     private var leaving: Date?
     private var banner: NSRect?
     private var center: pid_t?
-    private var tick = 0
-    private var timer: Timer?
+    private var heard: pid_t?
+    private var observer: AXObserver?
+    private var monitor: Any?
+    private var checks: [DispatchWorkItem] = []
+    private var later: DispatchWorkItem?
+    private let edge = Edge()
+    private var bag: [NSObjectProtocol] = []
+    private static let notifications = "com.apple.notificationcenterui"
 
     init(panel: Panel) {
         self.panel = panel
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.step() }
+        edge.crossed = { [weak self] in self?.step() }
+        panel.contentView?.addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: edge, userInfo: nil))
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification, NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
+            bag.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.listen() }
+            })
         }
+        bag.append(NotificationCenter.default.addObserver(forName: NSText.didEndEditingNotification, object: nil, queue: .main) { [weak self] _ in
+            DispatchQueue.main.async { self?.step() }
+        })
+        listen()
     }
 
     func peek(_ on: Bool) {
@@ -40,6 +55,7 @@ final class Away {
         tucked.toggle()
         revealed = false
         leaving = nil
+        arm()
         settle()
     }
 
@@ -51,24 +67,72 @@ final class Away {
         placed = nil
         tucked = false
         revealed = false
+        arm()
         clip(false)
         return false
     }
 
-    private func step() {
-        tick += 1
-        if tick % 3 == 0 {
-            let now = panel.isVisible ? banners() : nil
-            if now != banner {
-                banner = now
-                settle()
+    private func arm() {
+        if tucked, monitor == nil {
+            monitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+                MainActor.assumeIsolated { self?.step() }
             }
+        } else if !tucked, let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
         }
+    }
+
+    private func listen() {
+        let pid = NSRunningApplication.runningApplications(withBundleIdentifier: Away.notifications).first?.processIdentifier
+        guard pid != heard || observer == nil else { return }
+        if let observer { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes) }
+        observer = nil
+        heard = pid
+        guard let pid, Access.trusted else { return }
+        var made: AXObserver?
+        guard AXObserverCreate(pid, Away.callback, &made) == .success, let made else { return }
+        let app = AXUIElementCreateApplication(pid)
+        let me = Unmanaged.passUnretained(self).toOpaque()
+        var added = 0
+        for name in [kAXWindowCreatedNotification, kAXLayoutChangedNotification, kAXUIElementDestroyedNotification] where AXObserverAddNotification(made, app, name as CFString, me) == .success {
+            added += 1
+        }
+        guard added > 0 else { return }
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(made), .commonModes)
+        observer = made
+    }
+
+    private static let callback: AXObserverCallback = { _, _, _, refcon in
+        guard let refcon else { return }
+        let away = Unmanaged<Away>.fromOpaque(refcon).takeUnretainedValue()
+        MainActor.assumeIsolated { away.spot() }
+    }
+
+    private func spot() {
+        for check in checks { check.cancel() }
+        checks = [0, 0.2, 0.6].map { delay in
+            let check = DispatchWorkItem { [weak self] in self?.look() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: check)
+            return check
+        }
+    }
+
+    private func look() {
+        let now = panel.isVisible ? banners() : nil
+        if now != banner {
+            banner = now
+            settle()
+        }
+    }
+
+    private func step() {
         guard tucked, !moving else { return }
         let mouse = NSEvent.mouseLocation
         if revealed {
-            if panel.frame.insetBy(dx: -12, dy: -12).contains(mouse) || panel.firstResponder is NSTextView {
+            if panel.frame.insetBy(dx: -12, dy: -12).contains(mouse) || strip().contains(mouse) || panel.firstResponder is NSTextView {
                 leaving = nil
+                later?.cancel()
             } else if let leaving {
                 guard Date().timeIntervalSince(leaving) > 0.4 else { return }
                 revealed = false
@@ -76,11 +140,21 @@ final class Away {
                 settle()
             } else {
                 leaving = Date()
+                let check = DispatchWorkItem { [weak self] in self?.step() }
+                later = check
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: check)
             }
-        } else if panel.frame.intersection(screen(at: rest ?? top(panel.frame))).insetBy(dx: -2, dy: 0).contains(mouse) {
+        } else if strip().contains(mouse) {
             revealed = true
             settle()
         }
+    }
+
+    private func strip() -> NSRect {
+        let screen = screen(at: rest ?? top(panel.frame))
+        var frame = panel.frame
+        frame.origin.x = right ? screen.maxX - tab : screen.minX - frame.width + tab
+        return frame.intersection(screen).insetBy(dx: -2, dy: 0)
     }
 
     private func settle() {
@@ -124,6 +198,7 @@ final class Away {
                 self.moving = false
                 if self.tucked, !self.revealed, self.near(self.top(self.panel.frame), point) { self.clip(true) }
                 done()
+                self.step()
             }
         }
     }
@@ -182,5 +257,17 @@ final class Away {
         }
         guard depth < 6 else { return [] }
         return Access.children(element).flatMap { find($0, depth: depth + 1) }
+    }
+}
+
+private final class Edge: NSResponder {
+    var crossed: () -> Void = {}
+
+    override func mouseEntered(with event: NSEvent) {
+        crossed()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        crossed()
     }
 }

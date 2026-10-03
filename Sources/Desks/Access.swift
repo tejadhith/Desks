@@ -49,16 +49,23 @@ enum Access {
         }
     }
 
-    static func titles(for pids: Set<pid_t>) -> [UInt32: String] {
-        var titles: [UInt32: String] = [:]
+    static func id(of element: AXUIElement) -> UInt32? {
+        var id: CGWindowID = 0
+        return windowID(element, &id) == .success ? id : nil
+    }
+
+    static func scan(_ pids: Set<pid_t>) -> [UInt32: (pid: pid_t, element: AXUIElement, title: String)] {
+        var found: [UInt32: (pid: pid_t, element: AXUIElement, title: String)] = [:]
         for pid in pids {
             for window in windows(of: pid) {
-                if let title: String = value(window.element, kAXTitleAttribute), !title.isEmpty {
-                    titles[window.id] = title
-                }
+                found[window.id] = (pid, window.element, value(window.element, kAXTitleAttribute) ?? "")
             }
         }
-        return titles
+        return found
+    }
+
+    static func titles(for pids: Set<pid_t>) -> [UInt32: String] {
+        scan(pids).compactMapValues { $0.title.isEmpty ? nil : $0.title }
     }
 
     static func frame(_ element: AXUIElement) -> CGRect? {

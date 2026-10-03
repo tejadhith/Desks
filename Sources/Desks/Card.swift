@@ -36,17 +36,21 @@ struct Card: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(alignment: folded && store.editing != item.id ? .center : .firstTextBaseline, spacing: 8) {
                 if store.editing == item.id {
                     Badge(label: space?.number.map(String.init) ?? "–", active: active)
-                    TextField("Task name", text: $item.title, prompt: Text(""))
+                    TextField("Task name", text: $item.title, prompt: Text(""), axis: .vertical)
                         .hint("Task name", item.title.isEmpty)
                         .textFieldStyle(.plain)
+                        .wrap(item.title)
                         .focused($naming)
                         .onSubmit { store.editing = nil }
                         .onExitCommand { store.editing = nil }
                         .onChange(of: naming) { _, now in
                             if !now { store.editing = nil }
+                        }
+                        .onChange(of: item.title) { _, title in
+                            if title.contains(where: \.isNewline) { item.title = title.split(whereSeparator: \.isNewline).joined(separator: " ") }
                         }
                         .onAppear {
                             Panel.focus()
@@ -54,9 +58,12 @@ struct Card: View {
                         }
                 } else {
                     Button(action: tap) {
-                        HStack(spacing: 8) {
+                        HStack(alignment: folded ? .center : .firstTextBaseline, spacing: 8) {
                             Badge(label: space?.number.map(String.init) ?? "–", active: active)
-                            Ticker(text: item.title.isEmpty ? "Untitled" : item.title, rolling: hover && store.lift == nil)
+                            Text(item.title.isEmpty ? "Untitled" : item.title)
+                                .lineLimit(folded ? 1 : nil)
+                                .fixedSize(horizontal: false, vertical: !folded)
+                                .frame(maxWidth: folded ? nil : .infinity, alignment: .leading)
                                 .opacity(item.title.isEmpty ? 0.7 : 1)
                             if folded && !store.moving(.task(item.id)) {
                                 Group {
@@ -68,7 +75,7 @@ struct Card: View {
                                 }
                                 .transition(Store.blink)
                             }
-                            Spacer(minLength: 0)
+                            if folded { Spacer(minLength: 0) }
                         }
                         .contentShape(Rectangle())
                     }
@@ -91,7 +98,7 @@ struct Card: View {
                             Image(systemName: "play.fill")
                         }
                         .help("Start · opens a new desktop for this task")
-                        .disabled(store.busy || !store.trusted)
+                        .disabled(!store.trusted)
                     } else {
                         Button {
                             store.pull(item)
@@ -99,7 +106,6 @@ struct Card: View {
                             Image(systemName: "rectangle.stack.badge.plus")
                         }
                         .help("Send the front window here")
-                        .disabled(store.busy)
                     }
                     Button {
                         store.remove(item)
@@ -110,6 +116,7 @@ struct Card: View {
                 }
                 .buttonStyle(Glyph())
                 .opacity(hover || active ? 1 : 0.35)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Style.line }
                 Button(action: toss) {
                     Image(systemName: "chevron.down")
                         .rotationEffect(.degrees(folded ? 0 : 180))
@@ -117,6 +124,7 @@ struct Card: View {
                 .buttonStyle(Glyph())
                 .opacity(0.8)
                 .help(label)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + Style.line }
             }
             .font(.grotesk(13, .semibold))
             .frame(minHeight: 22)
@@ -247,7 +255,6 @@ struct Card: View {
             .buttonStyle(.plain)
             .font(.grotesk(11, .medium))
             .padding(.leading, Style.indent)
-            .disabled(store.busy)
         }
 
         if !item.chats.isEmpty {

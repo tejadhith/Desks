@@ -7,6 +7,7 @@ enum Style {
     static let round: CGFloat = 16
     static let shell = RoundedRectangle(cornerRadius: round, style: .continuous)
     static let plate = RoundedRectangle(cornerRadius: 10, style: .continuous)
+    static let line: CGFloat = NSFont(name: "SpaceGrotesk-Bold", size: 13).map { ($0.ascender + $0.descender) / 2 } ?? 4.5
     static let mark: NSImage? = {
         let image = Bundle.main.url(forResource: "Status", withExtension: "pdf").flatMap(NSImage.init(contentsOf:))
         image?.isTemplate = true
@@ -230,8 +231,10 @@ struct Apps: View {
 }
 
 extension Image {
+    @MainActor
     init(app pid: pid_t) {
-        if let icon = NSRunningApplication(processIdentifier: pid)?.icon {
+        if let icon = Icons.apps[pid] ?? NSRunningApplication(processIdentifier: pid)?.icon {
+            Icons.apps[pid] = icon
             self.init(nsImage: icon)
         } else {
             self.init(systemName: "macwindow")
@@ -251,60 +254,5 @@ struct Badge: View {
             .foregroundStyle(active ? Color.paper : Color.ink)
             .background(active ? Color.ink : Color.wash, in: RoundedRectangle(cornerRadius: 4))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(active ? Color.clear : Color.mist))
-    }
-}
-
-struct Ticker: View {
-    let text: String
-    let rolling: Bool
-    @State private var room: CGFloat = 0
-    @State private var full: CGFloat = 0
-    @State private var shift: CGFloat = 0
-    @State private var moving = false
-    private static let gap: CGFloat = 32
-
-    var body: some View {
-        Text(text)
-            .lineLimit(1)
-            .opacity(moving ? 0 : 1)
-            .background(GeometryReader { proxy in
-                Color.clear
-                    .onAppear { room = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in room = width }
-            })
-            .overlay(alignment: .leading) {
-                HStack(spacing: Self.gap) {
-                    Text(text)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .background(GeometryReader { proxy in
-                            Color.clear
-                                .onAppear { full = proxy.size.width }
-                                .onChange(of: proxy.size.width) { _, width in full = width }
-                        })
-                    Text(text)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-                .offset(x: shift)
-                    .opacity(moving ? 1 : 0)
-            }
-            .clipped()
-            .task(id: rolling) {
-                moving = false
-                shift = 0
-                guard rolling, full - room > 1 else { return }
-                try? await Task.sleep(for: .milliseconds(500))
-                let lap = full + Self.gap
-                let duration = Double(lap / 40)
-                while !Task.isCancelled {
-                    moving = true
-                    withAnimation(.linear(duration: duration)) { shift = -lap }
-                    try? await Task.sleep(for: .seconds(duration))
-                    guard !Task.isCancelled else { break }
-                    shift = 0
-                    try? await Task.sleep(for: .seconds(1.2))
-                }
-            }
     }
 }

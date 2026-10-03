@@ -100,8 +100,14 @@ final class Store: ObservableObject {
     private var fronts: [UInt64: Sky.Window] = [:]
     private var leads: [UInt64: UInt32] = [:]
     private var loop: Task<Void, Never>?
-    private var pulse: Task<Void, Never>?
+    private var scout: Scout?
+    private var stirring: Task<Void, Never>?
+    private var stirs = 0
     private var sense: Task<Void, Never>?
+    private var ear: Task<Void, Never>?
+    private var again = false
+    private var seen = Hooks.Seen()
+    private var watches: [URL: Watch] = [:]
     private var observers: [NSObjectProtocol] = []
     @Published private var lost: Set<UUID> = []
     private var returning: Set<UUID> = []
@@ -1113,11 +1119,13 @@ final class Store: ObservableObject {
         let current = Sky.current()
         let ids = spaces.filter { $0.number != nil }.map(\.id)
         let trusted = self.trusted
-        let (found, named) = await Task.detached {
+        let (found, scanned) = await Task.detached {
             let windows = Sky.windows(in: ids)
-            let titles = trusted ? Access.titles(for: Set(windows.map(\.pid))) : [:]
-            return (windows, titles)
+            let scanned = trusted ? Access.scan(Set(windows.map(\.pid))) : [:]
+            return (windows, scanned)
         }.value
+        let named = scanned.compactMapValues { $0.title.isEmpty ? nil : $0.title }
+        scout?.attach(scanned)
         leads = leads.filter { lead in found.contains { $0.id == lead.value && $0.space == lead.key } }
         var fronts: [UInt64: Sky.Window] = [:]
         for window in found where fronts[window.space] == nil { fronts[window.space] = window }
@@ -1235,25 +1243,32 @@ final class Store: ObservableObject {
                 Task { @MainActor in self?.census() }
             })
         }
+        observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stir() }
+        })
+        Sky.listen { [weak self] code, window in
+            DispatchQueue.main.async { self?.shift(code, window) }
+        }
+        scout = Scout(
+            changed: { [weak self] in self?.stir() },
+            focused: { [weak self] in self?.glance() },
+            titled: { [weak self] id, title in self?.retitle(id, title) }
+        )
         census()
         prime()
-        pulse = Task { [weak self] in
-            while !Task.isCancelled {
-                self?.glance()
-                try? await Task.sleep(for: .milliseconds(400))
-            }
-        }
+        glance()
         loop = Task { [weak self] in
             while !Task.isCancelled {
+                self?.scout?.scan()
+                self?.glance()
                 await self?.refresh()
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(30))
             }
         }
         sense = Task { [weak self] in
             while !Task.isCancelled {
-                self?.census()
-                await self?.listen()
-                try? await Task.sleep(for: .milliseconds(1500))
+                self?.poke()
+                try? await Task.sleep(for: .seconds(10))
             }
         }
     }
@@ -1300,8 +1315,40 @@ final class Store: ObservableObject {
         if now != running { running = now }
     }
 
+    private func poke() {
+        guard ear == nil else {
+            again = true
+            return
+        }
+        ear = Task { [weak self] in
+            repeat {
+                self?.again = false
+                try? await Task.sleep(for: .milliseconds(150))
+                await self?.listen()
+            } while self?.again == true
+            self?.ear = nil
+        }
+    }
+
+    private func track(_ tails: Set<URL>) {
+        let wanted = tails.union([Hooks.events])
+        for (url, watch) in watches where watch.dead || !wanted.contains(url) { watches[url] = nil }
+        for url in wanted where watches[url] == nil {
+            watches[url] = Watch(url) { [weak self] in
+                MainActor.assumeIsolated { self?.poke() }
+            }
+        }
+    }
+
     private func listen() async {
-        let found = await Task.detached { Hooks.read() }.value
+        let seen = self.seen
+        let (found, tails, memo) = await Task.detached {
+            var seen = seen
+            let (beats, tails) = Hooks.read(&seen)
+            return (beats, tails, seen)
+        }.value
+        self.seen = memo
+        track(tails)
         var beats: [String: Beat] = [:]
         for beat in found where (beats[beat.id]?.time ?? .distantPast) <= beat.time { beats[beat.id] = beat }
         if beats != self.beats { self.beats = beats }
@@ -1380,8 +1427,11 @@ final class Store: ObservableObject {
         let now = Date()
         let cutoff = now.addingTimeInterval(-86400)
         let taken = linked
-        let waiting = beats.values
-            .filter { !taken.contains($0.id) && !hidden.contains($0.id) && latest($0) > cutoff }
+        let candidates = beats.values.filter { !taken.contains($0.id) && !hidden.contains($0.id) && latest($0) > cutoff }
+        if let fresh = candidates.compactMap(\.prompt).filter({ now.timeIntervalSince($0) < 3 }).max() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.1 - now.timeIntervalSince(fresh)) { [weak self] in self?.sift() }
+        }
+        let waiting = candidates
             .filter { beat in
                 if let prompt = beat.prompt, now.timeIntervalSince(prompt) < 3 { return false }
                 guard let last = sifted[beat.id] else { return true }
@@ -1404,8 +1454,43 @@ final class Store: ObservableObject {
 
     private func settle(_ chat: Chat, _ pick: UUID?) {
         sorting = false
-        guard let pick, items.contains(where: { $0.id == pick && !$0.refused.contains(chat.id) }) else { return }
-        attach(chat, to: pick)
+        if let pick, items.contains(where: { $0.id == pick && !$0.refused.contains(chat.id) }) { attach(chat, to: pick) }
+        sift()
+    }
+
+    private func shift(_ code: UInt32, _ window: UInt32?) {
+        guard code != 1329 else { return }
+        if let window, code == 1325 || code == 1326, !windows.contains(where: { $0.id == window }), !Sky.normal(window) { return }
+        stir()
+    }
+
+    private func stir() {
+        stirs += 1
+        guard stirring == nil else { return }
+        stirring = Task { [weak self] in
+            let waits = [0.1, 0.25, 0.65]
+            var step = 0
+            var seen = self?.stirs
+            while let self, step < waits.count {
+                try? await Task.sleep(for: .seconds(waits[step]))
+                await refresh()
+                glance()
+                if stirs != seen {
+                    seen = stirs
+                    step = 1
+                } else {
+                    step += 1
+                }
+            }
+            self?.stirring = nil
+        }
+    }
+
+    private func retitle(_ id: UInt32, _ title: String) {
+        guard !title.isEmpty, titles[id] != title else { return }
+        titles[id] = title
+        guard let index = windows.firstIndex(where: { $0.id == id }), windows[index].title != title else { return }
+        windows[index].title = title
     }
 
     private func glance() {
